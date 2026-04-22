@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from erdstall_pipeline.pipeline import initialize_project
 
 class ProjectInitWorker(QObject):
     finished = Signal()
@@ -19,6 +18,9 @@ class ProjectInitWorker(QObject):
     @Slot()
     def run(self)-> None:
         try:
+            
+            from erdstall_pipeline.pipeline import initialize_project
+
             self.log.emit(f"Creating project: {self.mesh_id}")
             self.log.emit(f"Input mesh: {self.mesh_file}")
 

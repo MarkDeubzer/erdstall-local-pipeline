@@ -3,9 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Signal, Slot
 
 from erdstall_pipeline.config import ORIGINAL_MESH, REPAIRED_MESH
-from erdstall_pipeline.fill_holes import fill_holes
-from erdstall_pipeline.pipeline import PipelineError, mesh_base_dir, run_finalize
-from erdstall_pipeline.reduce_meshes import reduce_file_size
+
 from erdstall_pipeline.settings.fill_holes_settings import FillHolesSettings
 
 
@@ -23,6 +21,10 @@ class FillHolesWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
+            from erdstall_pipeline.fill_holes import fill_holes
+            from erdstall_pipeline.pipeline import PipelineError, mesh_base_dir, run_finalize
+            from erdstall_pipeline.reduce_meshes import reduce_file_size
+
             base = mesh_base_dir(self.mesh_id)
             original = base / ORIGINAL_MESH
             repaired = base / REPAIRED_MESH

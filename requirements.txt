@@ -8,3 +8,4 @@ imagej
 jpype1
 scipy
 PySide6
+pyqtdarktheme

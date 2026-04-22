@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from erdstall_pipeline.write_path_points_csv import write_path_points_csv
+
 
 
 class PathPointsWorker(QObject):
@@ -18,6 +18,7 @@ class PathPointsWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
+            from erdstall_pipeline.write_path_points_csv import write_path_points_csv
             csv_path = write_path_points_csv(self.mesh_id, self.values)
             self.success.emit(f"Path points CSV created: {csv_path}")
         except Exception as e:

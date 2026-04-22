@@ -1,23 +1,56 @@
 from __future__ import annotations
 
+import time
+_t0 = time.perf_counter()
+
+print(f"[main_window] start import (+{time.perf_counter() - _t0:.3f}s)", flush=True)
+
+print(f"[main_window] importing QAction (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from PySide6.QtGui import QAction
+
+print(f"[main_window] importing QMainWindow, QStackedWidget (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
 
+print(f"[main_window] importing HomePage (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.home_page import HomePage
+
+print(f"[main_window] importing TextureWindow (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.texture_window import TextureWindow
+
+print(f"[main_window] importing SetupWindow (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.setup_window import SetupWindow
+
+print(f"[main_window] importing AddProjectWindow (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.add_project_window import AddProjectWindow
+
+print(f"[main_window] importing ProjectInitWorker (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.workers.init_worker import ProjectInitWorker
+
+print(f"[main_window] importing Qt, Slot, QThread (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from PySide6.QtCore import Qt, Slot, QThread
+
+print(f"[main_window] importing TaskLogWindow (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.task_log_window import TaskLogWindow
+
+print(f"[main_window] importing PatchDetectionWorker (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.workers.patch_detection_worker import PatchDetectionWorker
+
+print(f"[main_window] importing AddPathPointsWindow (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.add_path_points_window import AddPathPointsWindow
+
+print(f"[main_window] importing PathPointsWorker (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.workers.path_points_worker import PathPointsWorker
+
+print(f"[main_window] importing FillHolesWindow (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.windows.fill_holes_window import FillHolesWindow
+
+print(f"[main_window] importing FillHolesWorker (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.workers.fill_holes_worker import FillHolesWorker
+
+print(f"[main_window] importing PathFullPipelineWorker (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_admin_gui.workers.path_full_pipeline import PathFullPipelineWorker
 
-from PySide6.QtCore import Qt, Slot, QThread
+print(f"[main_window] importing widgets/core extras (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -26,13 +59,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
-    QStackedWidget,
-    QMainWindow,
     QSizePolicy,
-    QMessageBox
+    QMessageBox,
 )
 
+print(f"[main_window] importing PLY_DIR (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 from erdstall_pipeline.config import PLY_DIR
+
+print(f"[main_window] imports complete (+{time.perf_counter() - _t0:.3f}s)", flush=True)
 
 
 class MainWindow(QMainWindow):

@@ -4,8 +4,6 @@ import asyncio
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from erdstall_pipeline.path_pipeline import run_full_pipeline
-
 class PathFullPipelineWorker(QObject):
     finished = Signal()
     log = Signal(str)
@@ -19,6 +17,8 @@ class PathFullPipelineWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
+            from erdstall_pipeline.path_pipeline import run_full_pipeline
+
             self.log.emit(f"Starting full path pipeline for project: {self.mesh_id}")
 
             csv_output, json_output = asyncio.run(run_full_pipeline(self.mesh_id,log_callback=self.log.emit))

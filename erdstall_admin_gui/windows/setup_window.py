@@ -130,7 +130,7 @@ class SetupWindow(QWidget):
         self.status_label.setText(msg)
 
     def _error(self, msg: str) -> None:
-        self.log(f"[ERROR] {msg}")
+        self._log(f"[ERROR] {msg}")
         self.status_label.setText("Failed")
 
     def _done(self) -> None:

@@ -26,18 +26,19 @@ class SetupWorker(QObject):
         finally:
             self.finished.emit()
 
-    def _check_python_modules(self)-> None:
+    def _check_python_modules(self) -> None:
         required_modules = [
             ("Pillow", "PIL"),
             ("opencv-python", "cv2"),
             ("numpy", "numpy"),
-            ("pymeshlab","pymeshlab"),
+            ("pymeshlab", "pymeshlab"),
             ("vtk", "vtk"),
-            ("scyjava","scyjava"),
+            ("scyjava", "scyjava"),
             ("imagej", "imagej"),
             ("jpype1", "jpype"),
-            ("scipy","scipy"),
-            ("PySide6","PySide6"),
+            ("scipy", "scipy"),
+            ("PySide6", "PySide6"),
+            ("pyqtdarktheme", "qdarktheme"),
         ]
 
         self.log.emit("Checking Python modules...")
@@ -45,17 +46,19 @@ class SetupWorker(QObject):
         missing: list[str] = []
 
         for package_name, import_name in required_modules:
+            self.log.emit(f"Checking {package_name}...")
             try:
-                importlib.import_module(import_name)
-                self.log.emit(f"[OK] {package_name}")
-            except Exception:
+                if importlib.util.find_spec(import_name) is not None:
+                    self.log.emit(f"[OK] {package_name}")
+                else:
+                    missing.append(package_name)
+                    self.log.emit(f"[MISSING] {package_name}")
+            except Exception as e:
                 missing.append(package_name)
-                self.log.emit(f"[MISSING] {package_name}")
-        
+                self.log.emit(f"[ERROR] {package_name}: {e}")
+
         if missing:
-            raise RuntimeError(
-                "Missing Python packages: " + ", ".join(missing)
-            )
+            raise RuntimeError("Missing Python packages: " + ", ".join(missing))
         
     def _check_fiji(self) -> None:
         self.log.emit("Checking Fiji executable...")

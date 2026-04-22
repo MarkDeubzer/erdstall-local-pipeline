@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from erdstall_pipeline.pipeline import run_patch_detection
+
 
 class PatchDetectionWorker(QObject):
     finished = Signal()
@@ -17,6 +17,8 @@ class PatchDetectionWorker(QObject):
     @Slot()
     def run(self)-> None:
         try:
+            from erdstall_pipeline.pipeline import run_patch_detection
+
             result = run_patch_detection(
                 self.mesh_id,
                 log_callback=self.log.emit
