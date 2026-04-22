@@ -85,10 +85,10 @@ winget install Microsoft.VisualStudioCode
 
 ### Windows
 ```bash
-python -m venv .venv  
+py -3.11 -m venv .venv311
 ```
 ```bash
-.venv\Scripts\activate  
+.venv311\Scripts\activate  
 ```
 ```bash
 pip install -r requirements.txt  
