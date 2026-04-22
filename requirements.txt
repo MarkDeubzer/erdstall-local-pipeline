@@ -1,0 +1,10 @@
+Pillow
+opencv-python
+numpy
+pymeshlab
+vtk
+scyjava
+imagej
+jpype1
+scipy
+PySide6

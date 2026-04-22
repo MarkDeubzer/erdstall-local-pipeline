@@ -1,0 +1,72 @@
+.# Python
+
+**pycache**/
+*.py[cod]
+*.pyo
+*.pyd
+
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+.venv311/
+env/
+ENV/
+
+# VS Code
+
+.vscode/
+
+# OS files
+
+.DS_Store
+Thumbs.db
+
+# Logs
+
+*.log
+
+# Build / dist
+
+build/
+dist/
+*.egg-info/
+
+# Data / pipeline outputs (IMPORTANT for your project)
+
+data/
+*.ply
+*.raw
+*.json
+*.csv
+
+# Temporary files
+
+tmp/
+temp/
+
+# ImageJ output / intermediate files
+
+*.tif
+*.tiff
+
+# Mesh processing artifacts
+
+*.obj
+*.stl
+
+# Environment variables
+
+.env
+
+# PySide / Qt cache
+
+*.qmlc
+*.jsc
+
+# Misc
+
+*.bak
+*.swp
