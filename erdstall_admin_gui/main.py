@@ -10,22 +10,20 @@ from erdstall_admin_gui.windows.main_window import MainWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("puplic/admin_icon.png"))
+    app.setWindowIcon(QIcon("public/admin_icon.png"))
     qdarktheme.setup_theme("dark")
 
     splash = SplashScreen()
     splash.show()
     app.processEvents()
 
-
     main_window = MainWindow()
-
 
     progress_timer = QTimer()
     progress_value = {"value": 0}
 
     def update_progress() -> None:
-        progress_value["value"] += 9
+        progress_value["value"] += 10
         splash.progress_bar.setValue(progress_value["value"])
         if progress_value["value"] >= 100:
             progress_timer.stop()
@@ -33,7 +31,7 @@ def main() -> int:
             main_window.show()
 
     progress_timer.timeout.connect(update_progress)
-    progress_timer.start(100)
+    progress_timer.start(30)
     return app.exec()
 
 

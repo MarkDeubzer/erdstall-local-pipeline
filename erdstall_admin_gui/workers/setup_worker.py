@@ -46,7 +46,6 @@ class SetupWorker(QObject):
         missing: list[str] = []
 
         for package_name, import_name in required_modules:
-            self.log.emit(f"Checking {package_name}...")
             try:
                 if importlib.util.find_spec(import_name) is not None:
                     self.log.emit(f"[OK] {package_name}")
