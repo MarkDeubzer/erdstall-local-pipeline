@@ -69,7 +69,24 @@ def fill_holes(
     ms.meshing_repair_non_manifold_vertices()
     log("Repairing topology done.")
 
-    
+    log("Applying Z cutoff before Poisson...")
+
+    source_vertices = ms.current_mesh().vertex_matrix()
+
+    max_z = source_vertices[:, 2].max()
+
+    z_cutoff = max_z - 0.75
+
+    condition = f"(z > {z_cutoff})"
+
+    ms.compute_selection_by_condition_per_vertex(condselect=condition)
+    ms.compute_selection_transfer_vertex_to_face()
+    ms.meshing_remove_selected_faces()
+    ms.meshing_remove_unreferenced_vertices()
+
+    log(f"Z cutoff applied. Removed geometry above z={z_cutoff:.3f}")
+
+
     log("Running Poisson reconstruction...")
     try:
         ms.generate_surface_reconstruction_screened_poisson(
@@ -84,6 +101,8 @@ def fill_holes(
         )
     finally:
        log("Poisson reconstruction done.")
+
+
 
     final_mesh_index = ms.number_meshes() - 1
     ms.set_current_mesh(final_mesh_index)
