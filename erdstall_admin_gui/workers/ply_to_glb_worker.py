@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import trimesh
+import numpy as np
 from PySide6.QtCore import QObject, Signal, Slot
 
 
@@ -41,6 +42,14 @@ class PlyToGlbWorker(QObject):
                 raise ValueError(
                     "PLY file is only a point cloud. GLB export needs a mesh with faces."
                 )
+
+            self.log.emit("Rotating mesh...")
+            rotation = trimesh.transformations.rotation_matrix(
+                np.radians(-90), [1,0,0]
+            )
+            mesh.apply_transform(rotation)
+            self.log.emit("Rotating mesh done.")
+
 
             self.log.emit("Cleaning mesh...")
 
