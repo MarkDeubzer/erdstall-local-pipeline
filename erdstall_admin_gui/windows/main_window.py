@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
 from erdstall_admin_gui.windows.home_page import HomePage
@@ -30,6 +32,7 @@ from PySide6.QtWidgets import (
 from erdstall_pipeline.config import PLY_DIR
 from erdstall_admin_gui.widgets.project_list_item_widget import ProjectListItemWidget
 import shutil
+from erdstall_admin_gui.workers.ply_to_glb_worker import PlyToGlbWorker
 
 
 class MainWindow(QMainWindow):
@@ -52,6 +55,8 @@ class MainWindow(QMainWindow):
         self._full_pipeline_thread: QThread | None = None
         self._full_pipeline_worker: PathFullPipelineWorker | None = None
         
+        self._glb_thread: QThread | None = None
+        self._glb_worker: PlyToGlbWorker | None = None
 
         self.setWindowTitle("Erdstall Admin")
         self.resize(1000, 700)
@@ -122,6 +127,10 @@ class MainWindow(QMainWindow):
         texture_action = QAction("Texture Changes", self)
         texture_action.triggered.connect(lambda: self.stack.setCurrentWidget(self.texture_page))
         toolbar.addAction(texture_action)
+
+        glb_action = QAction("Convert GLB", self)
+        glb_action.triggered.connect(self.start_ply_to_glb)
+        toolbar.addAction(glb_action)
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -463,4 +472,76 @@ class MainWindow(QMainWindow):
     def _on_full_pipeline_finished(self) -> None:
         self._full_pipeline_thread = None
         self._full_pipeline_worker = None
+        self._task_log_window = None
+
+    def start_ply_to_glb(self)-> None:
+        if not self.current_mesh_id:
+            QMessageBox.warning(self, "No project selected", "Please select a project first.")
+            return
+        if self._glb_thread is not None:
+            QMessageBox.information(self, "Busy", "Full glb pipeline is already running.")
+            return
+
+        mesh_path = Path("data/ply") / self.current_mesh_id / "mesh.ply"
+
+        if not mesh_path.exists():
+            QMessageBox.warning(
+                self,
+                "Missing mesh.ply",
+                "mesh.ply does not exist yet.\n\nYou need to run Fill Holes before converting to GLB."
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Convert PLY to GLB",
+            f"Are you sure you want to convert this PLY: '{self.current_mesh_id}'?'",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._task_log_window = TaskLogWindow(
+            f"Export GLB - {self.current_mesh_id}",
+            self
+        )
+
+        self._task_log_window.set_running("Exporting PLY to GLB...")
+
+        self._glb_thread = QThread()
+        self._glb_worker = PlyToGlbWorker(self.current_mesh_id)
+        self._glb_worker.moveToThread(self._glb_thread)
+
+        self._glb_thread.started.connect(self._glb_worker.run)
+        self._glb_worker.log.connect(self._task_log_window.append_log)
+        self._glb_worker.success.connect(self._on_glb_success)
+        self._glb_worker.error.connect(self._on_glb_error)
+        self._glb_worker.finished.connect(self._glb_thread.quit)
+        self._glb_worker.finished.connect(self._glb_worker.deleteLater)
+        self._glb_thread.finished.connect(self._glb_thread.deleteLater)
+        self._glb_thread.finished.connect(self._on_glb_finished)
+
+        self._glb_thread.start()
+        self._task_log_window.exec()
+
+    def _on_glb_success(self, message: str) -> None:
+        if self._task_log_window is not None:
+            self._task_log_window.append_log(f"[SUCCESS] {message}")
+            self._task_log_window.set_success("Export GLB completed.")
+            self._task_log_window.accept()
+
+        self.home_page.refresh_project_info()
+        QMessageBox.information(self, "Export GLB", message)
+
+    def _on_glb_error(self, message: str) -> None:
+        if self._task_log_window is not None:
+            self._task_log_window.append_log(f"[ERROR] {message}")
+            self._task_log_window.set_error("Export GLB failed.")
+        QMessageBox.critical(self, "Export GLB", message)
+
+    def _on_glb_finished(self) -> None:
+        self._glb_thread = None
+        self._glb_worker = None
         self._task_log_window = None

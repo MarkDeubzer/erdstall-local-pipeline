@@ -7,7 +7,7 @@ import importlib
 class SetupWorker(QObject):
     finished = Signal()
     log = Signal(str)
-    succes = Signal(str)
+    success = Signal(str)
     error = Signal(str)
 
 
@@ -20,7 +20,7 @@ class SetupWorker(QObject):
             self.log.emit("Starting environment validation...\n")
             self._check_python_modules()
             self._check_fiji()
-            self.succes.emit("Setup validation completed successfully.")
+            self.success.emit("Setup validation completed successfully.")
         except Exception as e: 
             self.error.emit(str(e))
         finally:

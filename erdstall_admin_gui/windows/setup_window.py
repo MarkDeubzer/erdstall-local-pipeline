@@ -115,7 +115,7 @@ class SetupWindow(QWidget):
 
         self._thread.started.connect(self._worker.run)
         self._worker.log.connect(self._log)
-        self._worker.succes.connect(self._succes)
+        self._worker.success.connect(self._success)
         self._worker.error.connect(self._error)
 
         self._worker.finished.connect(self._thread.quit)
@@ -125,8 +125,8 @@ class SetupWindow(QWidget):
 
         self._thread.start()
 
-    def _succes(self, msg: str) -> None:
-        self._log(f" [SUCCES] {msg}")
+    def _success(self, msg: str) -> None:
+        self._log(f" [SUCCESS] {msg}")
         self.status_label.setText(msg)
 
     def _error(self, msg: str) -> None:
