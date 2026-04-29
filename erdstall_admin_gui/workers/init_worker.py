@@ -19,7 +19,7 @@ class ProjectInitWorker(QObject):
     def run(self)-> None:
         try:
             
-            from erdstall_pipeline.pipeline import initialize_project
+            from erdstall_pipeline.pipeline import initialize_project, is_point_cloud_project
 
             self.log.emit(f"Creating project: {self.mesh_id}")
             self.log.emit(f"Input mesh: {self.mesh_file}")
@@ -34,6 +34,11 @@ class ProjectInitWorker(QObject):
                 input_mesh=self.mesh_file,
                 textures_dir=self.texture_dir
             )
+
+            if is_point_cloud_project(self.mesh_id):
+                self.log.emit("Detected project type: point cloud")
+            else:
+                self.log.emit("Detected project type: mesh")
 
             self.success.emit(f"Project created successfully: {base}")
 

@@ -4,6 +4,7 @@ import shutil
 from .clear_patches import clear_patches
 from .config import FINAL_MESH, ORIGINAL_MESH, PATCHES_DIR, PLY_DIR, REPAIRED_MESH, TEXTURE_DIR, BACKUP_TEXTURE_DIR
 from .fill_holes import fill_holes
+from .settings.fill_holes_settings import FillHolesSettings
 from .find_patches import find_patches, get_patches_json
 from .reduce_meshes import reduce_file_size
 from .utils import ensure_dir, validate_mesh_id
@@ -31,19 +32,76 @@ def create_project_structure(mesh_id: str) -> Path:
     return base
 
 
-def run_fill(mesh_id: str) -> Path:
+def ply_face_count(path: str |Path) -> int:
+    path = Path(path)
+
+    if not path.exists():
+        return 0
+
+    try:
+        with path.open("rb") as file:
+            for raw_line in file:
+                line = raw_line.decode("utf-8", errors="ignore").strip()
+
+                if line.startswith("element face"):
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        return int(parts[2])
+
+                if line == "end_header":
+                    break
+    except Exception as e:
+        return 0
+
+    return 0
+
+def is_point_cloud_file(path: str | Path) -> bool:
+    return ply_face_count(path) == 0
+
+def is_point_cloud_project(mesh_id: str) -> bool:
+    base = mesh_base_dir(mesh_id)
+    original = base / ORIGINAL_MESH
+    return is_point_cloud_file(original)
+
+def run_fill(
+    mesh_id: str,
+    settings: FillHolesSettings | None = None,
+    log_callback: LogCallback = None,
+) -> Path:
+    if settings is None:
+        settings = FillHolesSettings()
+
     base = create_project_structure(mesh_id)
     original = base / ORIGINAL_MESH
     repaired = base / REPAIRED_MESH
 
-    if not original.exists():
-        raise PipelineError(f'Missing input mesh: {original}')
+    if is_point_cloud_project(mesh_id):
+        if not repaired.exists():
+            raise PipelineError(
+                "This project is a point cloud. "
+                "Run Convert Point Cloud to Mesh before Fill Holes."
+            )
 
-    fill_holes(str(original), str(repaired))
+        input_mesh = repaired
+        output_mesh = repaired
+    else:
+        if not original.exists():
+            raise PipelineError(f"Missing input mesh: {original}")
 
-    reduce_file_size(str(repaired), initial_mesh_reduction=True)
+        input_mesh = original
+        output_mesh = repaired
 
-    return repaired
+    fill_holes(
+        str(input_mesh),
+        str(output_mesh),
+        settings=settings,
+        log_callback=log_callback,
+    )
+
+    if settings.reduce_size:
+        reduce_file_size(str(output_mesh), initial_mesh_reduction=True)
+
+    return output_mesh
 
 def initialize_project(
     mesh_id: str,

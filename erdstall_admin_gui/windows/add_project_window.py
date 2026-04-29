@@ -46,7 +46,7 @@ class AddProjectWindow(QDialog):
         texture_row.addWidget(self.texture_browse_button)
 
         form.addRow("Project name: ", self.mesh_id_edit)
-        form.addRow("Mesh file (.ply):", self._wrap(mesh_row))
+        form.addRow("Mesh / point cloud file (.ply):", self._wrap(mesh_row))
         form.addRow("Texture folder:", self._wrap(texture_row))
 
 

@@ -18,7 +18,7 @@ def _query_tree(
     k: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
     try:
-        return tree.query(points, k=k, workers=-1)
+        return tree.query(points, k=k, workers=1)
     except TypeError:
         return tree.query(points, k=k)
 
@@ -31,6 +31,16 @@ def _estimate_average_spacing(
 ) -> float:
     point_count = points.shape[0]
 
+    if point_count < 2:
+        raise ValueError("Need at least 2 points to estimate spacing.")
+
+    sample_size = int(sample_size)
+
+    if sample_size <= 0:
+        sample_size = min(point_count, 50_000)
+
+    sample_size = min(sample_size, point_count)
+
     if point_count > sample_size:
         log(
             f"Estimating average spacing from {sample_size:,} / "
@@ -38,15 +48,33 @@ def _estimate_average_spacing(
         )
 
         rng = np.random.default_rng(seed=42)
-        sample_indices = rng.choice(point_count, size=sample_size, replace=False)
-        sample_points = points[sample_indices]
+        sample_indices = rng.integers(
+            low=0,
+            high=point_count,
+            size=sample_size,
+            dtype=np.int64,
+        )
+
+        sample_points = np.ascontiguousarray(points[sample_indices])
     else:
         log(f"Estimating average spacing from all {point_count:,} points...")
-        sample_points = points
+        sample_points = np.ascontiguousarray(points)
 
     nearest_distances, _ = _query_tree(tree, sample_points, k=2)
 
-    return float(np.mean(nearest_distances[:, 1]))
+    nearest_distances = np.asarray(nearest_distances)
+
+    if nearest_distances.ndim != 2 or nearest_distances.shape[1] < 2:
+        raise ValueError("KDTree spacing query failed.")
+
+    valid_distances = nearest_distances[:, 1]
+    valid_distances = valid_distances[np.isfinite(valid_distances)]
+    valid_distances = valid_distances[valid_distances > 0]
+
+    if valid_distances.size == 0:
+        raise ValueError("Could not estimate point spacing.")
+
+    return float(np.mean(valid_distances))
 
 
 def _transfer_colors_to_vertices(

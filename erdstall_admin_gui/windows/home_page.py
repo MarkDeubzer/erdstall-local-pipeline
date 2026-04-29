@@ -25,12 +25,14 @@ from erdstall_pipeline.config import (
     TEXTURE_DIR,
 )
 
+from erdstall_admin_gui.widgets.flow_layout import FlowLayout
 
 class HomePage(QWidget):
     fill_holes_requested = Signal()
     patch_detection_requested = Signal()
     path_points_requested = Signal()
     path_full_pipeline_requested = Signal()
+    point_cloud_to_mesh_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -102,8 +104,12 @@ class HomePage(QWidget):
         action_title.setStyleSheet("font-size: 16px; font-weight: 600;")
         action_layout.addWidget(action_title)
 
-        button_row = QHBoxLayout()
-        button_row.setSpacing(12)
+        button_row = FlowLayout(spacing=12)
+
+        self.convert_point_cloud_button = QPushButton("Convert Point Cloud to Mesh")
+        self.convert_point_cloud_button.clicked.connect(
+            self.point_cloud_to_mesh_requested.emit
+        )
 
         self.fill_holes_button = QPushButton("Fill Holes")
         self.fill_holes_button.clicked.connect(self.fill_holes_requested.emit)
@@ -123,13 +129,13 @@ class HomePage(QWidget):
         self.refresh_button = QPushButton("Refresh Overview")
         self.refresh_button.clicked.connect(self.refresh_project_info)
 
+        button_row.addWidget(self.convert_point_cloud_button)
         button_row.addWidget(self.fill_holes_button)
         button_row.addWidget(self.detect_patches_button)
         button_row.addWidget(self.path_points_button)
         button_row.addWidget(self.path_full_pipeline_button)
         button_row.addWidget(self.open_project_folder_button)
         button_row.addWidget(self.refresh_button)
-        button_row.addStretch()
 
         action_layout.addLayout(button_row)
         main_layout.addWidget(action_box)
@@ -140,6 +146,8 @@ class HomePage(QWidget):
         self.detect_patches_button.setEnabled(False)
         self.path_points_button.setEnabled(False)
         self.path_full_pipeline_button.setEnabled(False)
+        self.convert_point_cloud_button.setEnabled(False)
+        self.convert_point_cloud_button.setVisible(False)
         
 
     def _add_status_row(self, row: int, label_text: str) -> None:
@@ -178,15 +186,22 @@ class HomePage(QWidget):
             self.detect_patches_button.setEnabled(False)
             self.path_points_button.setEnabled(False)
             self.path_full_pipeline_button.setEnabled(False)
+            self.convert_point_cloud_button.setEnabled(False)
+            self.convert_point_cloud_button.setVisible(False)
             return
 
         self.current_project_dir = PLY_DIR / mesh_id
         self.refresh_project_info()
 
     def refresh_project_info(self) -> None:
+
+        from erdstall_pipeline.pipeline import is_point_cloud_project
+
         if not self.current_mesh_id or not self.current_project_dir:
             self.set_project(None)
             return
+
+
 
         project_dir = self.current_project_dir
 
@@ -217,7 +232,16 @@ class HomePage(QWidget):
 
 
         self._set_buttons_enabled(True)
-        self.fill_holes_button.setEnabled(original_exists)
+
+        is_point_cloud = is_point_cloud_project(self.current_mesh_id)
+        self.convert_point_cloud_button.setVisible(is_point_cloud)
+        self.convert_point_cloud_button.setEnabled(is_point_cloud and original_exists)
+
+        if is_point_cloud:
+            self.fill_holes_button.setEnabled(repaired_exists)
+        else:
+            self.fill_holes_button.setEnabled(original_exists)
+
         self.detect_patches_button.setEnabled(repaired_exists)
         self.path_points_button.setEnabled(True)
         self.path_full_pipeline_button.setEnabled(final_exists and path_points_exists)

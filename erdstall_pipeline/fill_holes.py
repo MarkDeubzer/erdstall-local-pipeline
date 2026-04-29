@@ -2,14 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-import tempfile
 
 import numpy as np
-import open3d as o3d
 import pymeshlab
-from scipy.spatial import cKDTree
 
-from .convert_point_cloud import point_cloud_to_mesh
 from .settings.fill_holes_settings import FillHolesSettings
 
 
@@ -20,105 +16,6 @@ def _mesh_count(ms: pymeshlab.MeshSet) -> int:
     if hasattr(ms, "mesh_number"):
         return ms.mesh_number()
     return ms.number_meshes()
-
-
-def _query_tree(
-    tree: cKDTree,
-    points: np.ndarray,
-    k: int = 1,
-) -> tuple[np.ndarray, np.ndarray]:
-    try:
-        return tree.query(points, k=k, workers=-1)
-    except TypeError:
-        return tree.query(points, k=k)
-
-
-def _transfer_point_cloud_colors_to_open3d_mesh(
-    mesh: o3d.geometry.TriangleMesh,
-    pcd: o3d.geometry.PointCloud,
-    log_callback: Callable[[str], None],
-    chunk_size: int = 1_000_000,
-) -> o3d.geometry.TriangleMesh:
-    if not pcd.has_colors():
-        log_callback("Point-cloud color transfer skipped: point cloud has no colors.")
-        return mesh
-
-    points = np.asarray(pcd.points, dtype=np.float64)
-    colors = np.asarray(pcd.colors, dtype=np.float64)
-    vertices = np.asarray(mesh.vertices, dtype=np.float64)
-
-    if points.size == 0 or vertices.size == 0:
-        log_callback("Point-cloud color transfer skipped: empty points or vertices.")
-        return mesh
-
-    tree = cKDTree(points)
-    vertex_count = vertices.shape[0]
-    vertex_colors = np.empty((vertex_count, 3), dtype=np.float64)
-
-    log_callback(f"Transferring original point-cloud colors to {vertex_count:,} vertices...")
-
-    for start in range(0, vertex_count, chunk_size):
-        end = min(start + chunk_size, vertex_count)
-
-        _, nearest_indices = _query_tree(tree, vertices[start:end], k=1)
-        vertex_colors[start:end] = colors[nearest_indices]
-
-        percent = end / vertex_count * 100.0
-        log_callback(
-            f"Point-cloud color transfer progress: "
-            f"{end:,} / {vertex_count:,} ({percent:.1f}%)"
-        )
-
-    mesh.vertex_colors = o3d.utility.Vector3dVector(vertex_colors)
-    log_callback("Point-cloud color transfer done.")
-
-    return mesh
-
-
-def _save_current_mesh_with_point_cloud_colors(
-    ms: pymeshlab.MeshSet,
-    output_file: str,
-    pcd: o3d.geometry.PointCloud,
-    log_callback: Callable[[str], None],
-) -> None:
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir) / "final_geometry.ply"
-
-        log_callback(f"Saving temporary final geometry: {temp_path}")
-        ms.save_current_mesh(
-            str(temp_path),
-            save_vertex_color=True,
-            save_wedge_texcoord=False,
-            save_textures=False,
-        )
-
-        log_callback("Loading final geometry with Open3D for color transfer...")
-        mesh = o3d.io.read_triangle_mesh(str(temp_path))
-
-    if mesh.is_empty():
-        raise ValueError("Open3D loaded an empty final mesh.")
-
-    mesh = _transfer_point_cloud_colors_to_open3d_mesh(
-        mesh=mesh,
-        pcd=pcd,
-        log_callback=log_callback,
-    )
-
-    log_callback("Computing final Open3D vertex normals...")
-    mesh.compute_vertex_normals()
-
-    log_callback(f"Saving repaired mesh with point-cloud colors: {output_file}")
-    o3d.io.write_triangle_mesh(
-        output_file,
-        mesh,
-        write_ascii=False,
-        compressed=False,
-        write_vertex_normals=True,
-        write_vertex_colors=True,
-    )
 
 
 def keep_largest_connected_component(
@@ -290,37 +187,12 @@ def smooth_current_mesh(
             boundary=True,
         )
 
-        log("Laplian smoothing fallback done.")
+        log("Laplacian smoothing fallback done.")
 
     log("Recomputing normals after smoothing...")
     ms.compute_normal_per_face()
     ms.compute_normal_per_vertex()
     log("Normals recomputed after smoothing.")
-
-
-def close_holes_aggressively(
-    ms: pymeshlab.MeshSet,
-    max_hole_size: int,
-    log_callback: Callable[[str], None] | None = None,
-) -> None:
-    def log(message: str) -> None:
-        if log_callback is not None:
-            log_callback(message)
-        else:
-            print(message)
-
-    log(f"Closing holes with max size {max_hole_size:,}...")
-
-    try:
-        ms.meshing_close_holes(
-            maxholesize=max_hole_size,
-            selected=False,
-            newfaceselected=False,
-            selfintersection=True,
-        )
-        log("Hole closing done.")
-    except Exception as e:
-        log(f"Hole closing skipped: {e}")
 
 
 def close_mesh_holes_below_top_percent(
@@ -547,89 +419,76 @@ def fill_holes(
         else:
             print(message)
 
+    input_path = Path(input_file)
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if input_path.resolve() == output_path.resolve():
+        temp_output_path = output_path.with_name(output_path.stem + "_tmp_fill.ply")
+    else:
+        temp_output_path = output_path
 
     ms = pymeshlab.MeshSet()
 
     log("Loading mesh...")
-    ms.load_new_mesh(input_file)
+    ms.load_new_mesh(str(input_path))
     log("Loading mesh done.")
 
     original_index = 0
     original_mesh = ms.mesh(original_index)
-    input_is_point_cloud = original_mesh.face_number() == 0
 
-    source_mesh_index: int | None = original_index
-    original_pcd: o3d.geometry.PointCloud | None = None
-
-    if input_is_point_cloud:
-        log("Detected point cloud input.")
-
-        log("Loading point cloud with Open3D...")
-        original_pcd = o3d.io.read_point_cloud(input_file)
-
-        if original_pcd.is_empty():
-            raise ValueError("Open3D loaded an empty point cloud.")
-
-        log(f"Point cloud has {len(original_pcd.points):,} points.")
-
-        log("Running Open3D point-cloud reconstruction...")
-        o3d_mesh = point_cloud_to_mesh(
-            original_pcd,
-            settings=settings.point_cloud_settings,
-            log_callback=log,
+    if original_mesh.face_number() == 0:
+        raise ValueError(
+            "Fill Holes received a point cloud, not a mesh. "
+            "Run Convert Point Cloud to Mesh first."
         )
-        log("Open3D point-cloud reconstruction done.")
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_mesh_path = Path(temp_dir) / "open3d_reconstructed_mesh.ply"
+    log("Detected mesh input.")
 
-            log(f"Saving temporary Open3D mesh: {temp_mesh_path}")
-            o3d.io.write_triangle_mesh(
-                str(temp_mesh_path),
-                o3d_mesh,
-                write_ascii=False,
-                compressed=False,
-                write_vertex_normals=True,
-                write_vertex_colors=True,
-            )
+    ms.set_current_mesh(original_index)
 
-            log("Loading reconstructed mesh into PyMeshLab...")
-            ms.load_new_mesh(str(temp_mesh_path))
+    log("Cleaning mesh...")
+    ms.meshing_remove_unreferenced_vertices()
+    ms.meshing_remove_duplicate_faces()
+    ms.meshing_remove_duplicate_vertices()
+    log("Cleaning mesh done.")
 
-        final_mesh_index = _mesh_count(ms) - 1
-        ms.set_current_mesh(final_mesh_index)
+    log("Repairing topology...")
+    ms.meshing_repair_non_manifold_edges()
+    ms.meshing_repair_non_manifold_vertices()
+    log("Repairing topology done.")
 
-        log("Keeping largest component after Open3D reconstruction...")
-        final_mesh_index = keep_largest_connected_component(
-            ms,
-            log_callback=log,
-        )
-        ms.set_current_mesh(final_mesh_index)
-        log("Largest component cleanup done.")
+    log("Keeping only largest connected component...")
+    final_mesh_index = keep_largest_connected_component(
+        ms,
+        log_callback=log,
+    )
+    ms.set_current_mesh(final_mesh_index)
+    log("Largest connected component cleanup done.")
 
-        log("Computing normals before post-Poisson...")
-        ms.compute_normal_per_face()
-        ms.compute_normal_per_vertex()
-        log("Normals computed.")
+    log("Computing normals...")
+    ms.compute_normal_per_face()
+    ms.compute_normal_per_vertex()
+    log("Computing normals done.")
 
-        log("Running PyMeshLab post-Poisson to close remaining holes...")
+    if settings.run_poisson_on_mesh:
+        log("Running Poisson reconstruction on mesh input...")
         ms.generate_surface_reconstruction_screened_poisson(
-            depth=settings.point_cloud_depth,
-            fulldepth=settings.point_cloud_fulldepth,
-            scale=settings.point_cloud_scale,
-            samplespernode=settings.point_cloud_samplespernode,
-            pointweight=settings.point_cloud_pointweight,
-            iters=settings.point_cloud_iters,
-            preclean=settings.point_cloud_preclean,
+            depth=settings.poisson_depth,
+            fulldepth=settings.poisson_fulldepth,
+            cgdepth=settings.poisson_cgdepth,
+            scale=settings.poisson_scale,
+            samplespernode=settings.poisson_samplespernode,
+            pointweight=settings.poisson_pointweight,
+            iters=settings.poisson_iters,
+            preclean=settings.poisson_preclean,
         )
-        log("PyMeshLab post-Poisson done.")
+        log("Poisson reconstruction done.")
 
         final_mesh_index = _mesh_count(ms) - 1
         ms.set_current_mesh(final_mesh_index)
 
-        log("Keeping largest component after post-Poisson...")
+        log("Keeping only largest connected component after Poisson...")
         final_mesh_index = keep_largest_connected_component(
             ms,
             log_callback=log,
@@ -637,108 +496,29 @@ def fill_holes(
         ms.set_current_mesh(final_mesh_index)
         log("Post-Poisson largest component cleanup done.")
 
-        close_holes_aggressively(
+    if settings.close_holes_on_mesh_input:
+        final_mesh_index = close_mesh_holes_below_top_percent(
             ms,
-            max_hole_size=max(settings.mesh_hole_max_size, 1_000_000),
+            top_ignore_percent=settings.close_hole_under_percent,
             log_callback=log,
         )
-
-        if settings.smooth_reconstructed_point_cloud_mesh:
-            smooth_current_mesh(
-                ms,
-                iterations=settings.point_cloud_smoothing_iterations,
-                log_callback=log,
-            )
-        else:
-            log("Skipping smoothing for reconstructed point cloud mesh.")
-
-        source_mesh_index = None
-
-        log("Point cloud converted to closed mesh.")
-
+        ms.set_current_mesh(final_mesh_index)
     else:
-        log("Detected mesh input.")
+        log("Skipping hole closing on mesh input.")
 
-        ms.set_current_mesh(original_index)
-
-        log("Cleaning mesh...")
-        ms.meshing_remove_unreferenced_vertices()
-        ms.meshing_remove_duplicate_faces()
-        ms.meshing_remove_duplicate_vertices()
-        log("Cleaning mesh done.")
-
-        log("Repairing topology...")
-        ms.meshing_repair_non_manifold_edges()
-        ms.meshing_repair_non_manifold_vertices()
-        log("Repairing topology done.")
-
-        log("Keeping only largest connected component...")
-        cleaned_mesh_index = keep_largest_connected_component(
+    if settings.smooth_mesh_input:
+        smooth_current_mesh(
             ms,
+            iterations=settings.mesh_smoothing_iterations,
             log_callback=log,
         )
-        ms.set_current_mesh(cleaned_mesh_index)
-        log("Largest connected component cleanup done.")
 
-        log("Computing normals...")
-        ms.compute_normal_per_face()
-        ms.compute_normal_per_vertex()
-        log("Computing normals done.")
-
-        if settings.run_poisson_on_mesh:
-            log("Running Poisson reconstruction on mesh input...")
-            ms.generate_surface_reconstruction_screened_poisson(
-                depth=settings.poisson_depth,
-                fulldepth=settings.poisson_fulldepth,
-                cgdepth=settings.poisson_cgdepth,
-                scale=settings.poisson_scale,
-                samplespernode=settings.poisson_samplespernode,
-                pointweight=settings.poisson_pointweight,
-                iters=settings.poisson_iters,
-                preclean=settings.poisson_preclean,
-            )
-            log("Poisson reconstruction done.")
-
-            final_mesh_index = _mesh_count(ms) - 1
-            ms.set_current_mesh(final_mesh_index)
-
-            log("Keeping only largest connected component after Poisson...")
-            final_mesh_index = keep_largest_connected_component(
-                ms,
-                log_callback=log,
-            )
-            ms.set_current_mesh(final_mesh_index)
-            log("Post-Poisson largest component cleanup done.")
-
-        else:
-            final_mesh_index = cleaned_mesh_index
-            ms.set_current_mesh(final_mesh_index)
-
-        if settings.close_holes_on_mesh_input:
-            final_mesh_index = close_mesh_holes_below_top_percent(
-                ms,
-                top_ignore_percent=settings.close_hole_under_percent,
-                log_callback=log,
-            )
-            ms.set_current_mesh(final_mesh_index)
-        else:
-            log("Skipping hole closing on mesh input.")
-
-        if settings.smooth_mesh_input:
-            smooth_current_mesh(
-                ms,
-                iterations=settings.mesh_smoothing_iterations,
-                log_callback=log,
-            )
-
-        source_mesh_index = original_index
-
-    if settings.transfer_texture_to_vertex_colors and source_mesh_index is not None:
+    if settings.transfer_texture_to_vertex_colors:
         log("Transferring texture/color to vertex colors...")
 
         try:
             ms.transfer_texture_to_color_per_vertex(
-                sourcemesh=source_mesh_index,
+                sourcemesh=original_index,
                 targetmesh=final_mesh_index,
             )
             log("Transferring texture/color to vertex colors done.")
@@ -755,21 +535,15 @@ def fill_holes(
     ms.meshing_remove_unreferenced_vertices()
     log("Final cleanup done.")
 
-    if input_is_point_cloud and original_pcd is not None and original_pcd.has_colors():
-        _save_current_mesh_with_point_cloud_colors(
-            ms=ms,
-            output_file=output_file,
-            pcd=original_pcd,
-            log_callback=log,
-        )
-        log(f"Saved: {output_file}")
-        return
-
     log("Saving repaired mesh...")
     ms.save_current_mesh(
-        output_file,
+        str(temp_output_path),
         save_vertex_color=True,
         save_wedge_texcoord=False,
         save_textures=False,
     )
-    log(f"Saved: {output_file}")
+
+    if temp_output_path != output_path:
+        temp_output_path.replace(output_path)
+
+    log(f"Saved: {output_path}")

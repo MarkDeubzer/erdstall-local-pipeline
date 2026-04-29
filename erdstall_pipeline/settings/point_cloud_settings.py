@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 @dataclass
 class PointCloudSettings:
-    downsample_size: float = 0.0
-    poisson_depth: int = 11
+    downsample_size: float = 0.03
+    poisson_depth: int = 8
     poisson_scale: float = 1.02
 
     poisson_linear_fit: bool = False
@@ -17,5 +17,5 @@ class PointCloudSettings:
     orient_normals: bool = True
     orient_normals_k: int = 20
     smoothing_iterations: int = 1
-    color_transfer_chunk_size: int = 1_000_000
-    spacing_sample_size: int = 300_000
+    color_transfer_chunk_size: int = 100_000
+    spacing_sample_size: int = 50_000
