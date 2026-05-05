@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QObject, Signal, Slot
 
 from erdstall_pipeline.config import ORIGINAL_MESH, REPAIRED_MESH
@@ -69,26 +71,30 @@ class FillHolesWorker(QObject):
                 log_callback=self.log.emit,
             )
 
-            if self.settings.reduce_size:
-                self.log.emit("Reducing repaired mesh file size...")
-                reduce_file_size(
-                    str(output_mesh),
-                    initial_mesh_reduction=True,
-                    compression_percentage=self.settings.mesh_reduction_percent,
-                )
-                self.log.emit("Mesh reduction done.")
-            else:
-                self.log.emit("Skipping mesh reduction.")
-
             self.log.emit("Running finalize...")
             final_mesh = run_finalize(self.mesh_id)
             self.log.emit(f"Final mesh created: {final_mesh}")
 
-            mobile_mesh = final_mesh.with_name(
-                final_mesh.stem + "_mobile" + final_mesh.suffix
-            )
+            mobile_mesh = None
+
+            if self.settings.reduce_size:
+                self.log.emit("Creating reduced mobile mesh version...")
+
+                mobile_mesh_path = reduce_file_size(
+                    str(final_mesh),
+                    initial_mesh_reduction=False,
+                    compression_percentage=self.settings.mesh_reduction_percent
+                )
+
+                mobile_mesh = Path(mobile_mesh_path)
+
+            else:
+                self.log.emit("Skipping mobile mesh reduction.")
+
             if mobile_mesh.exists():
                 self.log.emit(f"Mobile mesh created: {mobile_mesh}")
+
+
 
             self.success.emit(
                 f"Repaired mesh created: {repaired}\nFinal mesh created: {final_mesh}"

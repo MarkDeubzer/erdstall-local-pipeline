@@ -85,7 +85,46 @@ def _estimate_average_spacing(
     if valid_distances.size == 0:
         raise ValueError("Could not estimate point spacing.")
 
-    return float(np.mean(valid_distances))
+    return float(np.median(valid_distances))
+
+def _clean_point_cloud_before_reconstruction(
+    pcd: o3d.geometry.PointCloud,
+    log: Callable[[str], None],
+) -> o3d.geometry.PointCloud:
+    log("Cleaning point cloud before reconstruction...")
+
+    before = len(pcd.points)
+
+    try:
+        pcd = pcd.remove_non_finite_points()
+        log(f"After removing non-finite points: {len(pcd.points):,}")
+    except Exception as e:
+        log(f"Removing non-finite points skipped: {e}")
+
+    try:
+        pcd = pcd.remove_duplicated_points()
+        log(f"After removing duplicated points: {len(pcd.points):,}")
+    except Exception as e:
+        log(f"Removing duplicated points skipped: {e}")
+
+    try:
+        pcd, _ = pcd.remove_statistical_outlier(
+            nb_neighbors=30,
+            std_ratio=1.5,
+        )
+        log(f"After statistical outlier removal: {len(pcd.points):,}")
+    except Exception as e:
+        log(f"Statistical outlier removal skipped: {e}")
+
+    after = len(pcd.points)
+    removed = before - after
+
+    log(f"Point cloud cleanup removed {removed:,} point(s).")
+
+    if pcd.is_empty():
+        raise ValueError("Point cloud became empty after cleanup.")
+
+    return pcd
 
 
 def _limit_point_count_for_poisson(
@@ -161,13 +200,13 @@ def _safe_normal_settings(
     requested_max_nn = int(settings.normal_max_nn)
 
     if point_count > 1_500_000:
-        max_nn_cap = 20
-    elif point_count > 750_000:
-        max_nn_cap = 24
-    elif point_count > 250_000:
         max_nn_cap = 30
+    elif point_count > 750_000:
+        max_nn_cap = 35
+    elif point_count > 250_000:
+        max_nn_cap = 40
     else:
-        max_nn_cap = 50
+        max_nn_cap = 60
 
     normal_max_nn = max(8, min(requested_max_nn, max_nn_cap))
 
@@ -257,8 +296,29 @@ def _orient_normals_safely(
     try:
         pcd.orient_normals_consistent_tangent_plane(safe_k)
         log("Normal orientation done.")
+        return
     except Exception as e:
-        log(f"Normal orientation failed, continuing anyway: {e}")
+        log(f"Consistent normal orientation failed: {e}")
+
+    log("Trying fallback normal orientation...")
+
+    try:
+        bbox = pcd.get_axis_aligned_bounding_box()
+        center = bbox.get_center()
+        extent = bbox.get_extent()
+        camera_location = center + np.array(
+            [0.0, 0.0, float(max(extent)) * 2.0],
+            dtype=np.float64,
+        )
+
+        pcd.orient_normals_towards_camera_location(camera_location)
+        log("Fallback normal orientation done.")
+    except Exception as fallback_error:
+        raise RuntimeError(
+            "Normal orientation failed. Poisson reconstruction would likely "
+            "produce a bad/blobby mesh. Try lowering Orient Normals K, cleaning "
+            "the point cloud, or using Ball Pivoting."
+        ) from fallback_error
 
 
 def _safe_poisson_depth(
@@ -377,10 +437,12 @@ def point_cloud_to_mesh(
 
     pcd = _limit_point_count_for_poisson(
         pcd=pcd,
-        max_points=int(getattr(settings, "max_points_for_poisson", 1_500_000)),
+        max_points=int(getattr(settings, "max_points_for_poisson", 3_000_000)),
         current_voxel_size=downsample_size,
         log=log,
     )
+
+    pcd = _clean_point_cloud_before_reconstruction(pcd, log)
 
     points = np.asarray(pcd.points, dtype=np.float64)
 
@@ -486,6 +548,18 @@ def point_cloud_to_mesh(
         )
     else:
         log("Skipping Poisson density trim.")
+
+    try:
+        log("Cropping Poisson mesh to point cloud bounds...")
+        bbox = pcd.get_axis_aligned_bounding_box()
+        bbox = bbox.scale(1.02, bbox.get_center())
+        mesh = mesh.crop(bbox)
+        log(
+            f"After bounds crop: {len(mesh.vertices):,} vertices, "
+            f"{len(mesh.triangles):,} faces."
+        )
+    except Exception as e:
+        log(f"Bounds crop skipped: {e}")
 
     mesh = _clean_mesh(mesh, log)
 

@@ -17,3 +17,4 @@ class GlbExportSettings:
     rotation_y_degrees: float = 0.0
     rotation_z_degrees: float = 0.0
 
+    create_mobile_glb: bool = True

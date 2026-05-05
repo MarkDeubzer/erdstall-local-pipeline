@@ -28,6 +28,7 @@ class PlyToGlbWorker(QObject):
         self.settings = settings or GlbExportSettings()
 
         self.add_human_scale = bool(self.settings.add_human_scale)
+        self.create_mobile_glb = bool(self.settings.create_mobile_glb)
         self.human_model_path = Path(self.settings.human_model_path).expanduser()
 
         if not self.human_model_path.is_absolute():
@@ -35,6 +36,103 @@ class PlyToGlbWorker(QObject):
         self.human_height = float(self.settings.human_height)
         self.human_floor_offset = float(self.settings.human_floor_offset)
         self.human_up_axis = str(self.settings.human_up_axis)
+
+    def _export_glb(
+            self,
+            input_path: Path,
+            output_path: Path,
+            label: str,
+    ) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not input_path.exists():
+            raise FileNotFoundError(f"{label} input file not found at {input_path}")
+
+        self.log.emit(f"Reading {label} PLY file: {input_path}")
+        loaded = trimesh.load(str(input_path), process=False)
+
+        if isinstance(loaded, trimesh.Scene):
+            if not loaded.geometry:
+                raise ValueError(f"Loaded {label} scene has no geometry.")
+            mesh = trimesh.util.concatenate(tuple(loaded.geometry.values()))
+        else:
+            mesh = loaded
+
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise ValueError(f"Loaded {label} file is not a valid mesh.")
+
+        if len(mesh.faces) == 0:
+            raise ValueError(
+                f"{label} PLY file is only a point cloud. "
+                "GLB export needs a mesh with faces."
+            )
+
+        self.log.emit(
+            f"Loaded {label} mesh: {len(mesh.vertices):,} vertices, "
+            f"{len(mesh.faces):,} faces."
+        )
+
+        self.log.emit(f"Forcing {label} mesh vertex colors to opaque...")
+        self._force_vertex_colors_opaque(mesh)
+
+        self.log.emit(f"Cleaning {label} mesh...")
+        mesh = self._clean_mesh(mesh)
+        self.log.emit(
+            f"After {label} cleanup: {len(mesh.vertices):,} vertices, "
+            f"{len(mesh.faces):,} faces."
+        )
+
+        geometries: list[tuple[str, trimesh.Trimesh]] = [(label, mesh)]
+
+        if self.add_human_scale:
+            if self.human_model_path.exists():
+                self.log.emit(
+                    f"Loading human scale model for {label}: {self.human_model_path}"
+                )
+
+                human_geometries = self._load_human_model(
+                    human_path=self.human_model_path,
+                    target_height=self.human_height,
+                    up_axis=self.human_up_axis,
+                )
+
+                self._place_human_next_to_mesh(
+                    human_geometries=human_geometries,
+                    mesh=mesh,
+                    human_height=self.human_height,
+                    floor_offset=self.human_floor_offset,
+                )
+
+                for index, human_geometry in enumerate(human_geometries):
+                    geometries.append((f"{label}_human_scale_{index}", human_geometry))
+
+                self.log.emit(f"Human scale model added to {label}.")
+            else:
+                self.log.emit(
+                    f"Human scale model not found, skipping for {label}: "
+                    f"{self.human_model_path}"
+                )
+        else:
+            self.log.emit(f"Human scale model disabled for {label}.")
+
+        self._apply_export_rotation(geometries)
+
+        self.log.emit(f"Building {label} GLB scene...")
+        scene = trimesh.Scene()
+
+        for name, geometry in geometries:
+            scene.add_geometry(geometry, geom_name=name)
+
+        self.log.emit(f"Saving {label} double-sided opaque GLB file: {output_path}")
+        glb_bytes = trimesh.exchange.gltf.export_glb(
+            scene,
+            include_normals=True,
+            tree_postprocessor=self._make_double_sided_opaque,
+        )
+
+        output_path.write_bytes(glb_bytes)
+
+        self.log.emit(f"{label} GLB saved: {output_path}")
 
     def _force_vertex_colors_opaque(self, mesh: trimesh.Trimesh) -> None:
         if not hasattr(mesh.visual, "vertex_colors"):
@@ -287,98 +385,43 @@ class PlyToGlbWorker(QObject):
         try:
             self.log.emit("Starting PLY to GLB conversion...")
 
-            input_path = Path(PLY_DIR) / self.mesh_id / FINAL_MESH
-            output_path = Path(PLY_DIR) / self.mesh_id / "mesh.glb"
+            project_dir = Path(PLY_DIR) / self.mesh_id
 
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            final_input_path = project_dir / FINAL_MESH
+            final_output_path = project_dir / "mesh.glb"
 
-            if not input_path.exists():
-                raise FileNotFoundError(f"File not found at {input_path}")
+            self._export_glb(
+                input_path=final_input_path,
+                output_path=final_output_path,
+                label="main",
+            )
 
-            self.log.emit(f"Reading PLY file: {input_path}")
-            loaded = trimesh.load(str(input_path), process=False)
+            success_message = f"Successfully saved GLB file to {final_output_path}"
 
-            if isinstance(loaded, trimesh.Scene):
-                if not loaded.geometry:
-                    raise ValueError("Loaded scene has no geometry.")
-                mesh = trimesh.util.concatenate(tuple(loaded.geometry.values()))
-            else:
-                mesh = loaded
-
-            if not isinstance(mesh, trimesh.Trimesh):
-                raise ValueError("Loaded file is not a valid mesh.")
-
-            if len(mesh.faces) == 0:
-                raise ValueError(
-                    "PLY file is only a point cloud. GLB export needs a mesh with faces."
+            if self.create_mobile_glb:
+                mobile_input_path = final_input_path.with_name(
+                    f"{final_input_path.stem}_mobile{final_input_path.suffix}"
                 )
+                mobile_output_path = project_dir / "mesh_mobile.glb"
 
-            self.log.emit(
-                f"Loaded mesh: {len(mesh.vertices):,} vertices, "
-                f"{len(mesh.faces):,} faces."
-            )
+                self.log.emit("Mobile GLB export enabled.")
 
-            self.log.emit("Forcing mesh vertex colors to opaque...")
-            self._force_vertex_colors_opaque(mesh)
-
-            self.log.emit("Cleaning mesh...")
-            mesh = self._clean_mesh(mesh)
-            self.log.emit(
-                f"After cleanup: {len(mesh.vertices):,} vertices, "
-                f"{len(mesh.faces):,} faces."
-            )
-
-            geometries: list[tuple[str, trimesh.Trimesh]] = [("mesh", mesh)]
-
-            if self.add_human_scale:
-                if self.human_model_path.exists():
+                if not mobile_input_path.exists():
                     self.log.emit(
-                        f"Loading human scale model: {self.human_model_path}"
+                        f"Mobile mesh not found, skipping mobile GLB: {mobile_input_path}"
                     )
-
-                    human_geometries = self._load_human_model(
-                        human_path=self.human_model_path,
-                        target_height=self.human_height,
-                        up_axis=self.human_up_axis,
-                    )
-
-                    self._place_human_next_to_mesh(
-                        human_geometries=human_geometries,
-                        mesh=mesh,
-                        human_height=self.human_height,
-                        floor_offset=self.human_floor_offset,
-                    )
-
-                    for index, human_geometry in enumerate(human_geometries):
-                        geometries.append((f"human_scale_{index}", human_geometry))
-
-                    self.log.emit("Human scale model added.")
                 else:
-                    self.log.emit(
-                        f"Human scale model not found, skipping: "
-                        f"{self.human_model_path}"
+                    self._export_glb(
+                        input_path=mobile_input_path,
+                        output_path=mobile_output_path,
+                        label="mobile",
                     )
+
+                    success_message += f"\nSuccessfully saved mobile GLB file to {mobile_output_path}"
             else:
-                self.log.emit("Human scale model disabled.")
+                self.log.emit("Mobile GLB export disabled.")
 
-            self._apply_export_rotation(geometries)
-
-            self.log.emit("Building GLB scene...")
-            scene = trimesh.Scene()
-
-            for name, geometry in geometries:
-                scene.add_geometry(geometry, geom_name=name)
-
-            self.log.emit("Saving double-sided opaque GLB file...")
-            glb_bytes = trimesh.exchange.gltf.export_glb(
-                scene,
-                include_normals=True,
-                tree_postprocessor=self._make_double_sided_opaque,
-            )
-
-            output_path.write_bytes(glb_bytes)
-
-            self.success.emit(f"Successfully saved GLB file to {output_path}")
+            self.success.emit(success_message)
 
         except Exception as e:
             self.error.emit(str(e))

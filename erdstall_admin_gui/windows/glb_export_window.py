@@ -59,6 +59,13 @@ class GlbExportWindow(QDialog):
         rotation_form.addRow("Rotate Y degrees:", self.rotation_y)
         rotation_form.addRow("Rotate Z degrees:", self.rotation_z)
 
+
+        output_group = QGroupBox("Output Options")
+        output_form = QFormLayout(output_group)
+
+        self.create_mobile_glb = QCheckBox("Create Mobile GLB")
+        output_form.addRow("", self.create_mobile_glb)
+
         buttons = QHBoxLayout()
         buttons.addStretch()
 
@@ -70,6 +77,7 @@ class GlbExportWindow(QDialog):
 
         layout.addWidget(human_group)
         layout.addWidget(rotation_group)
+        layout.addWidget(output_group)
         layout.addLayout(buttons)
 
     def _connect(self) -> None:
@@ -93,6 +101,8 @@ class GlbExportWindow(QDialog):
         self.rotation_x.setValue(defaults.rotation_x_degrees)
         self.rotation_y.setValue(defaults.rotation_y_degrees)
         self.rotation_z.setValue(defaults.rotation_z_degrees)
+
+        self.create_mobile_glb.setChecked(defaults.create_mobile_glb)
 
         self._set_human_settings_enabled(defaults.add_human_scale)
 
@@ -126,6 +136,7 @@ class GlbExportWindow(QDialog):
             rotation_x_degrees=self.rotation_x.value(),
             rotation_y_degrees=self.rotation_y.value(),
             rotation_z_degrees=self.rotation_z.value(),
+            create_mobile_glb=self.create_mobile_glb.isChecked(),
         )
 
     def _wrap(self, layout: QHBoxLayout) -> QWidget:
