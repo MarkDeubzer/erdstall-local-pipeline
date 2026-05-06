@@ -75,25 +75,28 @@ class FillHolesWorker(QObject):
             final_mesh = run_finalize(self.mesh_id)
             self.log.emit(f"Final mesh created: {final_mesh}")
 
-            mobile_mesh = None
+            try:
 
-            if self.settings.reduce_size:
-                self.log.emit("Creating reduced mobile mesh version...")
+                mobile_mesh = None
 
-                mobile_mesh_path = reduce_file_size(
-                    str(final_mesh),
-                    initial_mesh_reduction=False,
-                    compression_percentage=self.settings.mesh_reduction_percent
-                )
+                if self.settings.reduce_size:
+                    self.log.emit("Creating reduced mobile mesh version...")
 
-                mobile_mesh = Path(mobile_mesh_path)
+                    mobile_mesh_path = reduce_file_size(
+                        str(final_mesh),
+                        initial_mesh_reduction=False,
+                        compression_percentage=self.settings.mesh_reduction_percent
+                    )
 
-            else:
-                self.log.emit("Skipping mobile mesh reduction.")
+                    mobile_mesh = Path(mobile_mesh_path)
 
-            if mobile_mesh.exists():
-                self.log.emit(f"Mobile mesh created: {mobile_mesh}")
+                else:
+                    self.log.emit("Skipping mobile mesh reduction.")
 
+                if mobile_mesh.exists():
+                    self.log.emit(f"Mobile mesh created: {mobile_mesh}")
+            except Exception as e:
+                self.log.emit(str(e))
 
 
             self.success.emit(

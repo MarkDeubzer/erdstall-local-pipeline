@@ -17,6 +17,8 @@ from .config import (
     SIZE,
 )
 
+from erdstall_pipeline.settings.app_settings import AppSettings
+
 def _get_fiji_executable() -> Path:
     env_path = os.environ.get("FIJI_EXE") or os.environ.get("FIJI_PATH")
 
@@ -25,11 +27,19 @@ def _get_fiji_executable() -> Path:
         if fiji_path.exists():
             return fiji_path
 
+    settings_path = AppSettings.get_fiji_exe()
+
+    if settings_path:
+        fiji_path = Path(settings_path).expanduser()
+        if fiji_path.exists():
+            return fiji_path
+
     candidates: list[Path] = []
 
     if sys.platform.startswith("win"):
         candidates.extend(
             [
+                Path(r"C:\Praktikum_docs\Fiji\fiji-windows-x64.exe"),
                 Path(r"C:\Fiji.app\ImageJ-win64.exe"),
                 Path(r"C:\Program Files\Fiji.app\ImageJ-win64.exe"),
                 Path(r"C:\Program Files\Fiji.app\fiji-windows-x64.exe"),
@@ -42,13 +52,12 @@ def _get_fiji_executable() -> Path:
                 Path.home() / "Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
             ]
         )
-
     else:
         candidates.extend(
             [
-                Path("/opt/Fiji.app/Imagej-linux64"),
-                Path("/usr/local/Fiji.app/Imagej-linux64"),
-                Path.home() / "Fiji.app/Imagej-linux64",
+                Path("/opt/Fiji.app/ImageJ-linux64"),
+                Path("/usr/local/Fiji.app/ImageJ-linux64"),
+                Path.home() / "Fiji.app/ImageJ-linux64",
             ]
         )
 
@@ -62,15 +71,21 @@ def _get_fiji_executable() -> Path:
         "ImageJ-macosx",
         "ImageJ-linux64",
         "fiji",
-        "imagej"
     ):
         found = shutil.which(executable_name)
         if found:
-            return Path(found)
+            found_path = Path(found)
+
+            lowered_parts = {part.lower() for part in found_path.parts}
+            if ".venv" in lowered_parts or ".venv311" in lowered_parts or "scripts" in lowered_parts:
+                continue
+
+            return found_path
 
     raise RuntimeError(
         "Fiji executable not found.\n\n"
-        "Set the FIJI_EXE environment variable to your Fiji executable path.\n\n"
+        "Set FIJI_EXE to the real Fiji executable, for example:\n"
+        'PowerShell: $env:FIJI_EXE = "C:\\Praktikum_docs\\Fiji\\fiji-windows-x64.exe"\n'
     )
 
 def _count_nonzero_raw(path: Path) -> int:
