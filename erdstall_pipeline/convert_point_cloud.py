@@ -193,20 +193,22 @@ def _safe_normal_settings(
     requested_radius = avg_spacing * float(settings.normal_radius_factor)
 
     min_radius = avg_spacing * 1.5
-    max_radius = avg_spacing * 6.0
+    max_radius = avg_spacing * 8.0
 
     normal_radius = float(np.clip(requested_radius, min_radius, max_radius))
 
     requested_max_nn = int(settings.normal_max_nn)
 
-    if point_count > 1_500_000:
-        max_nn_cap = 30
+    if point_count > 5_000_000:
+        max_nn_cap = 80
+    elif point_count > 3_000_000:
+        max_nn_cap = 100
+    elif point_count > 1_500_000:
+        max_nn_cap = 120
     elif point_count > 750_000:
-        max_nn_cap = 35
-    elif point_count > 250_000:
-        max_nn_cap = 40
+        max_nn_cap = 140
     else:
-        max_nn_cap = 60
+        max_nn_cap = 160
 
     normal_max_nn = max(8, min(requested_max_nn, max_nn_cap))
 
@@ -431,6 +433,142 @@ def point_cloud_to_mesh(
 
     raise ValueError(f"Unknown reconstruction method: {method}")
 
+
+def _densify_point_cloud_local_centroids(
+    pcd: o3d.geometry.PointCloud,
+    avg_spacing: float,
+    settings: PointCloudSettings,
+    log: Callable[[str], None],
+) -> o3d.geometry.PointCloud:
+    if not getattr(settings, "densify_point_cloud", False):
+        log("Point cloud densification skipped.")
+        return pcd
+
+    points = np.asarray(pcd.points, dtype=np.float64)
+
+    if points.shape[0] < 3:
+        log("Point cloud densification skipped: not enough points.")
+        return pcd
+
+    has_colors = pcd.has_colors()
+    colors = np.asarray(pcd.colors, dtype=np.float64) if has_colors else None
+
+    densify_factor = float(getattr(settings, "densify_factor", 0.5))
+    densify_k = int(getattr(settings, "densify_k", 8))
+    max_edge_factor = float(getattr(settings, "densify_max_edge_factor", 2.5))
+    max_new_points = int(getattr(settings, "densify_max_new_points", 500_000))
+
+    if densify_factor <= 0 or max_new_points <= 0:
+        log("Point cloud densification skipped: factor/max points <= 0.")
+        return pcd
+
+    densify_k = max(3, densify_k)
+    max_edge_length = avg_spacing * max_edge_factor
+
+    original_count = points.shape[0]
+    target_new_count = min(
+        int(original_count * densify_factor),
+        max_new_points,
+    )
+
+    if target_new_count <= 0:
+        log("Point cloud densification skipped: target count <= 0.")
+        return pcd
+
+    log(
+        f"Densifying point cloud: original={original_count:,}, "
+        f"target_new={target_new_count:,}, k={densify_k}, "
+        f"max_edge_length={max_edge_length:.6f}..."
+    )
+
+    tree = cKDTree(points)
+
+    rng = np.random.default_rng(seed=42)
+    sample_count = min(original_count, target_new_count * 3)
+
+    sample_indices = rng.integers(
+        low=0,
+        high=original_count,
+        size=sample_count,
+        dtype=np.int64,
+    )
+
+    new_points: list[np.ndarray] = []
+    new_colors: list[np.ndarray] = []
+
+    for center_index in sample_indices:
+        center_point = points[center_index]
+
+        distances, neighbor_indices = _query_tree(
+            tree,
+            center_point.reshape(1, 3),
+            k=densify_k,
+            workers=1,
+        )
+
+        distances = np.asarray(distances).reshape(-1)
+        neighbor_indices = np.asarray(neighbor_indices).reshape(-1)
+
+        valid = np.isfinite(distances)
+        valid &= distances > 0
+        valid &= distances <= max_edge_length
+
+        neighbor_indices = neighbor_indices[valid]
+
+        if neighbor_indices.size < 2:
+            continue
+
+        a_index = int(center_index)
+        b_index = int(neighbor_indices[0])
+        c_index = int(neighbor_indices[min(1, neighbor_indices.size - 1)])
+
+        a = points[a_index]
+        b = points[b_index]
+        c = points[c_index]
+
+        ab = np.linalg.norm(a - b)
+        ac = np.linalg.norm(a - c)
+        bc = np.linalg.norm(b - c)
+
+        if max(ab, ac, bc) > max_edge_length:
+            continue
+
+        new_point = (a + b + c) / 3.0
+        new_points.append(new_point)
+
+        if has_colors and colors is not None:
+            new_color = (
+                colors[a_index] +
+                colors[b_index] +
+                colors[c_index]
+            ) / 3.0
+            new_colors.append(new_color)
+
+        if len(new_points) >= target_new_count:
+            break
+
+    if not new_points:
+        log("Point cloud densification produced no valid new points.")
+        return pcd
+
+    new_points_array = np.asarray(new_points, dtype=np.float64)
+    final_points = np.vstack((points, new_points_array))
+
+    dense_pcd = o3d.geometry.PointCloud()
+    dense_pcd.points = o3d.utility.Vector3dVector(final_points)
+
+    if has_colors and colors is not None:
+        new_colors_array = np.asarray(new_colors, dtype=np.float64)
+        final_colors = np.vstack((colors, new_colors_array))
+        dense_pcd.colors = o3d.utility.Vector3dVector(final_colors)
+
+    log(
+        f"Point cloud densification done: "
+        f"{original_count:,} -> {len(dense_pcd.points):,} points."
+    )
+
+    return dense_pcd
+
 def _point_cloud_to_mesh_poisson(
     pcd: o3d.geometry.PointCloud,
     settings: PointCloudSettings | None = None,
@@ -491,6 +629,29 @@ def _point_cloud_to_mesh_poisson(
         log=log,
         sample_size=int(settings.spacing_sample_size),
     )
+
+    log(f"Average point spacing: {avg_spacing:.6f}")
+
+    pcd = _densify_point_cloud_local_centroids(
+        pcd=pcd,
+        avg_spacing=avg_spacing,
+        settings=settings,
+        log=log,
+    )
+
+    points = np.asarray(pcd.points, dtype=np.float64)
+
+    log("Recomputing KDTree after densification...")
+    tree = cKDTree(points)
+
+    avg_spacing = _estimate_average_spacing(
+        points=points,
+        tree=tree,
+        log=log,
+        sample_size=int(settings.spacing_sample_size),
+    )
+
+    log(f"Average point spacing after densification: {avg_spacing:.6f}")
 
     normal_radius, normal_max_nn = _safe_normal_settings(
         point_count=point_count,
@@ -758,6 +919,48 @@ def _point_cloud_to_mesh_ball_pivoting(
         raise ValueError("Point cloud became empty after outlier removal.")
 
     points = np.asarray(pcd.points, dtype=np.float64)
+
+    # ------------------------------------------------------------
+    # Optional point cloud densification
+    # ------------------------------------------------------------
+    log("Checking point cloud densification settings...")
+
+    # Recompute spacing after outlier removal.
+    log("Recomputing KDTree before densification...")
+    tree = cKDTree(points)
+
+    avg_spacing = _estimate_average_spacing(
+        points=points,
+        tree=tree,
+        log=log,
+        sample_size=int(settings.spacing_sample_size),
+    )
+
+    log(f"Average point spacing before densification: {avg_spacing:.6f}")
+
+    pcd = _densify_point_cloud_local_centroids(
+        pcd=pcd,
+        avg_spacing=avg_spacing,
+        settings=settings,
+        log=log,
+    )
+
+    points = np.asarray(pcd.points, dtype=np.float64)
+
+    if points.shape[0] < 3:
+        raise ValueError("Need at least 3 points after densification.")
+
+    log("Recomputing KDTree after densification...")
+    tree = cKDTree(points)
+
+    avg_spacing = _estimate_average_spacing(
+        points=points,
+        tree=tree,
+        log=log,
+        sample_size=int(settings.spacing_sample_size),
+    )
+
+    log(f"Average point spacing after densification: {avg_spacing:.6f}")
 
     # ------------------------------------------------------------
     # Normals

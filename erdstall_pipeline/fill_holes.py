@@ -478,13 +478,16 @@ def fill_holes(
     ms.meshing_repair_non_manifold_vertices()
     log("Repairing topology done.")
 
-    log("Keeping only largest connected component...")
-    final_mesh_index = keep_largest_connected_component(
-        ms,
-        log_callback=log,
-    )
-    ms.set_current_mesh(final_mesh_index)
-    log("Largest connected component cleanup done.")
+    if getattr(settings, "keep_largest_component", False):
+        log("Keeping only largest connected component...")
+        final_mesh_index = keep_largest_connected_component(
+            ms,
+            log_callback=log,
+        )
+        ms.set_current_mesh(final_mesh_index)
+        log("Largest connected component cleanup done.")
+    else:
+        log("Skipping largest connected component cleanup.")
 
     log("Computing normals...")
     ms.compute_normal_per_face()
@@ -508,13 +511,16 @@ def fill_holes(
         final_mesh_index = _mesh_count(ms) - 1
         ms.set_current_mesh(final_mesh_index)
 
-        log("Keeping only largest connected component after Poisson...")
-        final_mesh_index = keep_largest_connected_component(
-            ms,
-            log_callback=log,
-        )
-        ms.set_current_mesh(final_mesh_index)
-        log("Post-Poisson largest component cleanup done.")
+        if getattr(settings, "keep_largest_component", False):
+            log("Keeping only largest connected component after Poisson...")
+            final_mesh_index = keep_largest_connected_component(
+                ms,
+                log_callback=log,
+            )
+            ms.set_current_mesh(final_mesh_index)
+            log("Post-Poisson largest component cleanup done.")
+        else:
+            log("Skipping largest component cleanup after Poisson.")
 
     if settings.close_holes_on_mesh_input:
         final_mesh_index = close_mesh_holes_below_top_percent(

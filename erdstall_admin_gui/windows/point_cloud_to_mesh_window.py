@@ -21,7 +21,7 @@ class PointCloudToMeshWindow(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("Point Cloud to Mesh Settings")
-        self.resize(560, 520)
+        self.resize(800, 500)
 
         self._build_ui()
         self._load_defaults()
@@ -93,6 +93,24 @@ class PointCloudToMeshWindow(QDialog):
         preprocess_form.addRow("Spacing sample size:", self.spacing_sample_size)
 
         # ------------------------------------------------------------
+        # Densification
+        # ------------------------------------------------------------
+        self.densify_group = QGroupBox("Point Cloud Densification")
+        densify_form = QFormLayout(self.densify_group)
+
+        self.densify_point_cloud = QCheckBox()
+        self.densify_factor = self._doublespinbox(0.0, 5.0, 0.1, 2)
+        self.densify_k = self._spinbox(3, 100)
+        self.densify_max_edge_factor = self._doublespinbox(0.5, 20.0, 0.1, 2)
+        self.densify_max_new_points = self._spinbox(0, 20_000_000)
+
+        densify_form.addRow("Densify point cloud:", self.densify_point_cloud)
+        densify_form.addRow("Densify factor:", self.densify_factor)
+        densify_form.addRow("Densify K neighbors:", self.densify_k)
+        densify_form.addRow("Max edge factor:", self.densify_max_edge_factor)
+        densify_form.addRow("Max new points:", self.densify_max_new_points)
+
+        # ------------------------------------------------------------
         # Normals
         # ------------------------------------------------------------
         normals_group = QGroupBox("Normals")
@@ -156,6 +174,7 @@ class PointCloudToMeshWindow(QDialog):
 
         layout.addWidget(mode_group)
         layout.addWidget(preprocess_group)
+        layout.addWidget(self.densify_group)
         layout.addWidget(normals_group)
         layout.addWidget(self.cave_group)
         layout.addWidget(self.poisson_group)
@@ -171,6 +190,7 @@ class PointCloudToMeshWindow(QDialog):
         self.remove_small_components.toggled.connect(
             self.min_component_triangle_ratio.setEnabled
         )
+        self.densify_point_cloud.toggled.connect(self._update_densify_ui)
 
     def _update_mode_ui(self) -> None:
         method = self.reconstruction_method.currentData()
@@ -198,6 +218,14 @@ class PointCloudToMeshWindow(QDialog):
             self.remove_small_components.isChecked()
         )
 
+    def _update_densify_ui(self) -> None:
+        enabled = self.densify_point_cloud.isChecked()
+
+        self.densify_factor.setEnabled(enabled)
+        self.densify_k.setEnabled(enabled)
+        self.densify_max_edge_factor.setEnabled(enabled)
+        self.densify_max_new_points.setEnabled(enabled)
+
     def _load_defaults(self) -> None:
         defaults = PointCloudSettings()
 
@@ -206,6 +234,18 @@ class PointCloudToMeshWindow(QDialog):
             getattr(defaults, "max_points_for_poisson", 1_500_000)
         )
         self.spacing_sample_size.setValue(defaults.spacing_sample_size)
+
+        self.densify_point_cloud.setChecked(
+            getattr(defaults, "densify_point_cloud", False)
+        )
+        self.densify_factor.setValue(getattr(defaults, "densify_factor", 0.5))
+        self.densify_k.setValue(getattr(defaults, "densify_k", 8))
+        self.densify_max_edge_factor.setValue(
+            getattr(defaults, "densify_max_edge_factor", 2.5)
+        )
+        self.densify_max_new_points.setValue(
+            getattr(defaults, "densify_max_new_points", 500_000)
+        )
 
         self.normal_radius_factor.setValue(defaults.normal_radius_factor)
         self.normal_max_nn.setValue(defaults.normal_max_nn)
@@ -249,6 +289,7 @@ class PointCloudToMeshWindow(QDialog):
         self.max_hole_size.setValue(getattr(defaults, "max_hole_size", 100))
 
         self._update_mode_ui()
+        self._update_densify_ui()
 
     def get_settings(self) -> PointCloudSettings:
         return PointCloudSettings(
@@ -257,6 +298,12 @@ class PointCloudToMeshWindow(QDialog):
             downsample_size=self.downsample_size.value(),
             max_points_for_poisson=self.max_points_for_poisson.value(),
             spacing_sample_size=self.spacing_sample_size.value(),
+
+            densify_point_cloud=self.densify_point_cloud.isChecked(),
+            densify_factor=self.densify_factor.value(),
+            densify_k=self.densify_k.value(),
+            densify_max_edge_factor=self.densify_max_edge_factor.value(),
+            densify_max_new_points=self.densify_max_new_points.value(),
 
             normal_radius_factor=self.normal_radius_factor.value(),
             normal_max_nn=self.normal_max_nn.value(),

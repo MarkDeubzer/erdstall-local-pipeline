@@ -48,3 +48,10 @@ class PointCloudSettings:
     # Output
     smoothing_iterations: int = 0
     color_transfer_chunk_size: int = 1_000_000
+
+    # Point cloud densification / upsampling
+    densify_point_cloud: bool = False
+    densify_factor: float = 0.5
+    densify_k: int = 8
+    densify_max_edge_factor: float = 2.5
+    densify_max_new_points: int = 500_000

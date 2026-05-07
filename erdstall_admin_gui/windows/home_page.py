@@ -225,7 +225,16 @@ class HomePage(QWidget):
         final_exists = final_mesh.exists()
 
         self._set_status("Original mesh", original_exists)
-        self._set_status("Converted mesh", converted_exists)
+        is_point_cloud = is_point_cloud_project(self.current_mesh_id)
+
+        converted_name_label = self.status_grid.itemAtPosition(1, 0).widget()
+        converted_value_label = self.status_labels["Converted mesh"]
+
+        converted_name_label.setVisible(is_point_cloud)
+        converted_value_label.setVisible(is_point_cloud)
+
+        if is_point_cloud:
+            self._set_status("Converted mesh", converted_exists)
         self._set_status("Repaired mesh", repaired_exists)
         self._set_status("Final mesh", final_exists)
         self._set_status("Mobile mesh", mobile_mesh.exists())
@@ -237,8 +246,6 @@ class HomePage(QWidget):
 
 
         self._set_buttons_enabled(True)
-
-        is_point_cloud = is_point_cloud_project(self.current_mesh_id)
         self.convert_point_cloud_button.setVisible(is_point_cloud)
         self.convert_point_cloud_button.setEnabled(is_point_cloud and original_exists)
 

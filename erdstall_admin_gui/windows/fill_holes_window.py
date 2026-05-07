@@ -108,10 +108,15 @@ class FillHolesWindow(QDialog):
 
         self.smooth_mesh_input = QCheckBox()
         self.mesh_smoothing_iterations = self._spinbox(0, 50)
+        self.keep_largest_component = QCheckBox()
+
+
 
         self.transfer_texture = QCheckBox("Transfer texture to vertex colors")
         self.reduce_size = QCheckBox("Reduce file size after repair")
         self.mesh_reduction_percent = self._doublespinbox(0.0, 95.0, 1.0, 5)
+
+        output_form.addRow("Keep only largest component:", self.keep_largest_component)
         output_form.addRow("Smooth mesh:", self.smooth_mesh_input)
         output_form.addRow(
             "Smoothing iterations:",
@@ -179,6 +184,10 @@ class FillHolesWindow(QDialog):
         self.mesh_smoothing_iterations.setValue(defaults.mesh_smoothing_iterations)
         self.mesh_smoothing_iterations.setEnabled(defaults.smooth_mesh_input)
 
+        self.keep_largest_component.setChecked(
+            getattr(defaults, "keep_largest_component", False)
+        )
+
         self.transfer_texture.setChecked(defaults.transfer_texture_to_vertex_colors)
         self.reduce_size.setChecked(defaults.reduce_size)
         self.mesh_reduction_percent.setValue(
@@ -238,6 +247,7 @@ class FillHolesWindow(QDialog):
             mesh_smoothing_iterations=self.mesh_smoothing_iterations.value(),
             reduce_size=self.reduce_size.isChecked(),
             mesh_reduction_percent=self.mesh_reduction_percent.value(),
+            keep_largest_component=self.keep_largest_component.isChecked(),
         )
 
     @staticmethod

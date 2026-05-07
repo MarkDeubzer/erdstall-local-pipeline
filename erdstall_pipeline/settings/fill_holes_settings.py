@@ -28,3 +28,4 @@ class FillHolesSettings:
 
     reduce_size: bool = False
     mesh_reduction_percent: float = INITIAL_MESH_REDUCTION_FACTOR
+    keep_largest_component: bool = False
