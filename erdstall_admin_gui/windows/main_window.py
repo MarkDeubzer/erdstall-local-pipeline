@@ -44,10 +44,13 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
     def __init__(self) -> None:
         super().__init__()
 
+        # Cancellation Tokens
         self._fill_cancel_token = None
         self._full_pipeline_cancel_token  = None
         self._glb_cancel_token = None
+        self._point_cloud_cancel_token = None
 
+        # Threads and Workers
         self.current_mesh_id: str | None = None
         self._init_thread: QThread | None  = None
         self._init_worker: ProjectInitWorker | None = None
@@ -499,63 +502,33 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             QMessageBox.warning(self, "No project selected", "Please select a project first.")
             return
 
-        if self._point_cloud_thread is not None:
-            QMessageBox.information(
-                self,
-                "Busy",
-                "Point cloud conversion is already running.",
-            )
-            return
+        mesh_id = self.current_mesh_id
 
         dialog = PointCloudToMeshWindow(self)
+
         if not dialog.exec():
             return
 
         settings = dialog.get_settings()
 
-        self._task_log_window = TaskLogWindow(
-            f"Point Cloud to Mesh - {self.current_mesh_id}",
-            self,
+        self._start_logged_cancelable_task(
+            task_title=f"Point Cloud to Mesh - {mesh_id}",
+            busy_message="Point cloud conversion is already running.",
+            running_message="Converting point cloud to mesh...",
+            thread_attr="_point_cloud_thread",
+            worker_attr="_point_cloud_worker",
+            cancel_token_attr="_point_cloud_cancel_token",
+            worker_factory=lambda cancel_token: PointCloudToMeshWorker(
+                mesh_id,
+                settings=settings,
+                cancel_token=cancel_token,
+            ),
+            success_status="Point cloud conversion completed.",
+            error_status="Point cloud conversion failed.",
+            success_box_title="Point Cloud to Mesh",
+            error_box_title="Point Cloud to Mesh failed",
+            on_success=self._after_point_cloud_to_mesh_success,
         )
-        self._task_log_window.set_running("Converting point cloud to mesh...")
 
-        self._point_cloud_thread = QThread()
-        self._point_cloud_worker = PointCloudToMeshWorker(
-            self.current_mesh_id,
-            settings=settings,
-        )
-
-        self._point_cloud_worker.moveToThread(self._point_cloud_thread)
-
-        self._point_cloud_thread.started.connect(self._point_cloud_worker.run)
-        self._point_cloud_worker.log.connect(self._task_log_window.append_log)
-        self._point_cloud_worker.success.connect(self._on_point_cloud_to_mesh_success)
-        self._point_cloud_worker.error.connect(self._on_point_cloud_to_mesh_error)
-        self._point_cloud_worker.finished.connect(self._point_cloud_thread.quit)
-        self._point_cloud_worker.finished.connect(self._point_cloud_worker.deleteLater)
-        self._point_cloud_thread.finished.connect(self._point_cloud_thread.deleteLater)
-        self._point_cloud_thread.finished.connect(self._on_point_cloud_to_mesh_finished)
-
-        self._point_cloud_thread.start()
-        self._task_log_window.show()
-
-    def _on_point_cloud_to_mesh_success(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[SUCCESS] {message}")
-            self._task_log_window.set_success("Point cloud conversion completed.")
-            self._task_log_window.accept()
-
+    def _after_point_cloud_to_mesh_success(self, message: str) -> None:
         self.home_page.refresh_project_info()
-        QMessageBox.information(self, "Point Cloud to Mesh", message)
-
-    def _on_point_cloud_to_mesh_error(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[ERROR] {message}")
-            self._task_log_window.set_error("Point cloud conversion failed.")
-
-        QMessageBox.critical(self, "Point Cloud to Mesh failed", message)
-
-    def _on_point_cloud_to_mesh_finished(self) -> None:
-        self._point_cloud_thread = None
-        self._point_cloud_worker = None
-        self._task_log_window = None
