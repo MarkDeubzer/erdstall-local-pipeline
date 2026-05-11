@@ -4,6 +4,8 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
+
+from erdstall_admin_gui.workers.cancelable_worker import TaskCancelled
 from .csv_to_json import csv_to_json_file
 import pymeshlab
 from collections.abc import Callable
@@ -26,8 +28,14 @@ from .run_imagej import run_imagej
 from .skeleton_pipeline import merge_raws
 from .path_finding_from_raw import compute_skeleton_csv
 
+
 logger = logging.getLogger(__name__)
 LogCallback = Callable[[str], None] | None
+CancelCallback = Callable[[], None] | None
+
+def _check_cancelled(cancel_callback: CancelCallback) -> None:
+    if cancel_callback is not None:
+        cancel_callback()
 
 def get_project_dir(mesh_id: str) -> Path:
     """
@@ -120,14 +128,16 @@ def ensure_exists(path: str | Path, message: str) -> None:
     if not path.exists():
         raise RuntimeError(message)
 
-def reduce_for_path(file_path: str) -> str:
+def reduce_for_path(file_path: str,cancel_callback: CancelCallback = None) -> str:
+    _check_cancelled(cancel_callback)
     ms = pymeshlab.MeshSet()
     ms.load_new_mesh(file_path)
+    _check_cancelled(cancel_callback)
 
     original_faces = ms.current_mesh().face_number()
 
     target_faces = max(int(original_faces * 0.03), 150000)
-
+    _check_cancelled(cancel_callback)
     ms.meshing_decimation_quadric_edge_collapse(
         targetfacenum=target_faces,
         preserveboundary=True,
@@ -138,17 +148,18 @@ def reduce_for_path(file_path: str) -> str:
         qualityweight=False,
         autoclean=True
     )
+    _check_cancelled(cancel_callback)
 
     ms.meshing_remove_duplicate_faces()
     ms.meshing_remove_duplicate_vertices()
-
+    _check_cancelled(cancel_callback)
     output_path = str(FILES_DIR / PATH_MESH_FILENAME)
     ms.save_current_mesh(output_path)
-
+    _check_cancelled(cancel_callback)
     return output_path
 
 
-async def run_full_pipeline(mesh_id: str, log_callback: LogCallback = None) -> tuple[Path, Path]:
+async def run_full_pipeline(mesh_id: str, log_callback: LogCallback = None , cancel_callback: CancelCallback = None ) -> tuple[Path, Path]:
     """
     Run the complete path calculation pipeline.
 
@@ -181,19 +192,23 @@ async def run_full_pipeline(mesh_id: str, log_callback: LogCallback = None) -> t
     try:
             # Step 1: Validate project inputs
         log("Validate project inputs ...")
+        _check_cancelled(cancel_callback)
         project_dir, mesh_path, path_points_path = validate_inputs(mesh_id)
         logger.info("Validated inputs for %s", mesh_id)
+        _check_cancelled(cancel_callback)
         log("Validate projects inputs done")
 
         # Step 2: Prepare temp folder
         log("Preparing temp folder ...")
+        _check_cancelled(cancel_callback)
         await asyncio.to_thread(prepare_work_dir)
         logger.info("Prepared work directory: %s", work_dir)
+        _check_cancelled(cancel_callback)
         log("Preparing temp folder done.")
 
         # Step 3: Copy files into temp folder
         log("Copy files into temp folder ...")
-       
+        _check_cancelled(cancel_callback)
         temp_mesh, _temp_points = await asyncio.to_thread(
             copy_inputs_to_workdir,
             mesh_path,
@@ -201,66 +216,77 @@ async def run_full_pipeline(mesh_id: str, log_callback: LogCallback = None) -> t
             work_dir,
         )
         logger.info("Copied inputs to work directory")
+        _check_cancelled(cancel_callback)
         log("Copy files into temp folder done")
 
         # Step 4: Reduce copied temp mesh for pathfinding
         log("Reducing mesh size...")
-       
-        path_mesh = await asyncio.to_thread(reduce_for_path, str(temp_mesh))
+        _check_cancelled(cancel_callback)
+        path_mesh = await asyncio.to_thread(
+            reduce_for_path,
+            str(temp_mesh),
+            cancel_callback=cancel_callback,
+         )
         logger.info("Reduced mesh for pathfinding: %s", path_mesh)
+        _check_cancelled(cancel_callback)
         log("Reducing mesh size done")
 
         # Step 5: Convert reduced mesh to RAW
         log("Converting PLY to RAW ...")
-        
+        _check_cancelled(cancel_callback)
         await asyncio.to_thread(convert_ply_to_raw, str(path_mesh))
 
         raw_from_ply = work_dir / RAW_FROM_PLY_FILENAME
         ensure_exists(raw_from_ply, f"PLY to RAW conversion failed: {raw_from_ply}")
         logger.info("PLY to RAW conversion finished")
         log("Converting PLY to RAW done")
-
+        _check_cancelled(cancel_callback)
         # Step 5: Run ImageJ
         log("Running Imagej ...")
-       
+        _check_cancelled(cancel_callback)
         await run_imagej()
         logger.info("ImageJ processing finished")
 
         skeleton_raw = work_dir / SKELETON_FILENAME
         ensure_exists(skeleton_raw, f"ImageJ did not create skeleton file: {skeleton_raw}")
-
+        _check_cancelled(cancel_callback)
         # Reuse the filled raw written by convert_ply_to_raw as volume.raw
         volume_raw = work_dir / VOLUME_FILENAME
         await asyncio.to_thread(shutil.copy2, raw_from_ply, volume_raw)
         ensure_exists(volume_raw, f"Could not prepare volume file: {volume_raw}")
-
+        _check_cancelled(cancel_callback)
         log("Running ImageJ done")
 
         log("Merging skeleton with volume ...")
-        
+        _check_cancelled(cancel_callback)
         merged_raw = await asyncio.to_thread(merge_raws)
         logger.info("Merged skeleton with volume: %s", merged_raw)
+        _check_cancelled(cancel_callback)
         log("Merging skeleton with volume done")
 
 
         # Step 7: Compute path
         log("Compute path ...")
-       
+        _check_cancelled(cancel_callback)
         path_csv = await asyncio.to_thread(compute_skeleton_csv)
         path_csv_path = Path(path_csv)
         ensure_exists(path_csv_path, f"Path CSV was not created: {path_csv_path}")
         logger.info("Computed path CSV")
-
+        _check_cancelled(cancel_callback)
         await asyncio.to_thread(shutil.copy2, path_csv_path, final_output)
         ensure_exists(final_output, f"Could not copy path CSV to project folder: {final_output}")
         logger.info("Copied final path CSV to %s", final_output)
         json_output = await asyncio.to_thread(csv_to_json_file, final_output, final_json_output)
         ensure_exists(json_output, f"Could not create path JSON: {json_output}")
         logger.info("Created final path JSON at %s", json_output)
-
+        _check_cancelled(cancel_callback)
         log("Compute path done")
         return final_output, json_output
-    
+
+    except TaskCancelled:
+        logger.info("Path pipeline cancelled for %s", mesh_id)
+        log("Path pipeline cancelled.")
+        raise
 
     except Exception:
         logger.exception("Path pipeline failed for %s", mesh_id)

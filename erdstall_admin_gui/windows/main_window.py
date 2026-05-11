@@ -4,6 +4,8 @@ from pathlib import Path
 
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
+
+from erdstall_admin_gui.runners.task_runner import LoggedCancelableTaskRunnerMixin
 from erdstall_admin_gui.windows.home_page import HomePage
 from erdstall_admin_gui.windows.texture_window import TextureWindow
 from erdstall_admin_gui.windows.setup_window import SetupWindow
@@ -38,9 +40,12 @@ from erdstall_admin_gui.workers.ply_to_glb_worker import PlyToGlbWorker
 from erdstall_admin_gui.windows.point_cloud_to_mesh_window import PointCloudToMeshWindow
 from erdstall_admin_gui.windows.glb_export_window import GlbExportWindow
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
     def __init__(self) -> None:
         super().__init__()
+
+        self._fill_cancel_token = None
+        self._full_pipeline_cancel_token  = None
 
         self.current_mesh_id: str | None = None
         self._init_thread: QThread | None  = None
@@ -286,58 +291,36 @@ class MainWindow(QMainWindow):
 
         settings = dialog.get_settings()
         self._start_fill_holes(settings)
-    
+
     def _start_fill_holes(self, settings) -> None:
         if not self.current_mesh_id:
             QMessageBox.warning(self, "No project selected", "Please select a project first.")
             return
 
-        if self._fill_thread is not None:
-            QMessageBox.information(self, "Busy", "Fill holes is already running.")
-            return
+        mesh_id = self.current_mesh_id
 
-        self._task_log_window = TaskLogWindow(
-            f"Fill Holes - {self.current_mesh_id}",
-            self,
+        self._start_logged_cancelable_task(
+            task_title=f"Fill Holes - {mesh_id}",
+            busy_message="Fill holes is already running.",
+            running_message="Running Fill Holes...",
+            thread_attr="_fill_thread",
+            worker_attr="_fill_worker",
+            cancel_token_attr="_fill_cancel_token",
+            worker_factory= lambda cancel_token: FillHolesWorker(
+                mesh_id,
+                settings,
+                cancel_token=cancel_token
+            ),
+            success_status="Fill Holes completed.",
+            error_status="Fill Holes failed.",
+            success_box_title="Fill Holes",
+            error_box_title = "Fill Holes failed",
+            on_success = self._after_fill_holes_success
         )
-        self._task_log_window.set_running("Running Fill Holes...")
 
-        self._fill_thread = QThread()
-        self._fill_worker = FillHolesWorker(self.current_mesh_id, settings)
-
-        self._fill_worker.moveToThread(self._fill_thread)
-
-        self._fill_thread.started.connect(self._fill_worker.run)
-        self._fill_worker.log.connect(self._task_log_window.append_log)
-        self._fill_worker.success.connect(self._on_fill_holes_success)
-        self._fill_worker.error.connect(self._on_fill_holes_error)
-        self._fill_worker.finished.connect(self._fill_thread.quit)
-        self._fill_worker.finished.connect(self._fill_worker.deleteLater)
-        self._fill_thread.finished.connect(self._fill_thread.deleteLater)
-        self._fill_thread.finished.connect(self._on_fill_holes_finished)
-
-        self._fill_thread.start()
-        self._task_log_window.show()
-
-    def _on_fill_holes_success(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[SUCCESS] {message}")
-            self._task_log_window.set_success("Fill Holes completed.")
-            self._task_log_window.accept()
-
+    def _after_fill_holes_success(self, message: str) -> None:
         self.home_page.refresh_project_info()
-        QMessageBox.information(self, "Fill Holes", message)
 
-    def _on_fill_holes_error(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[ERROR] {message}")
-            self._task_log_window.set_error("Fill Holes failed.")
-
-        QMessageBox.critical(self, "Fill Holes failed", message)
-
-    def _on_fill_holes_finished(self) -> None:
-        self._fill_thread = None
-        self._fill_worker = None
     
     def start_patch_detection(self) -> None:
         if not self.current_mesh_id:
@@ -436,58 +419,33 @@ class MainWindow(QMainWindow):
         self._path_points_thread = None
         self._path_points_worker = None
 
-    def start_full_pipeline(self) -> None:
+    def start_full_pipeline(self) ->None:
         if not self.current_mesh_id:
             QMessageBox.warning(self, "No project selected", "Please select a project first.")
             return
 
-        if self._full_pipeline_thread is not None:
-            QMessageBox.information(self, "Busy", "Full pipeline is already running.")
-            return
+        mesh_id = self.current_mesh_id
 
-        self._task_log_window = TaskLogWindow(
-            f"Full Pipeline - {self.current_mesh_id}",
-            self,
+        self._start_logged_cancelable_task(
+            task_title=f"Full Pipeline - {mesh_id}",
+            busy_message="Full pipeline is already running.",
+            running_message="Running path full pipeline...",
+            thread_attr="_full_pipeline_thread",
+            worker_attr="_full_pipeline_worker",
+            cancel_token_attr="_full_pipeline_cancel_token",
+            worker_factory=lambda cancel_token: PathFullPipelineWorker(
+                mesh_id,
+                cancel_token=cancel_token,
+            ),
+            success_status="Full path pipeline completed.",
+            error_status="Full path pipeline failed.",
+            success_box_title="Full path Pipeline",
+            error_box_title="Full path Pipeline failed",
+            on_success=self._after_full_pipeline_success,
         )
-        self._task_log_window.set_running("Running path full pipeline...")
-        
 
-        self._full_pipeline_thread = QThread()
-        self._full_pipeline_worker = PathFullPipelineWorker(self.current_mesh_id)
-        self._full_pipeline_worker.moveToThread(self._full_pipeline_thread)
-
-        self._full_pipeline_thread.started.connect(self._full_pipeline_worker.run)
-        self._full_pipeline_worker.log.connect(self._task_log_window.append_log)
-        self._full_pipeline_worker.success.connect(self._on_full_pipeline_success)
-        self._full_pipeline_worker.error.connect(self._on_full_pipeline_error)
-        self._full_pipeline_worker.finished.connect(self._full_pipeline_thread.quit)
-        self._full_pipeline_worker.finished.connect(self._full_pipeline_worker.deleteLater)
-        self._full_pipeline_thread.finished.connect(self._full_pipeline_thread.deleteLater)
-        self._full_pipeline_thread.finished.connect(self._on_full_pipeline_finished)
-
-        self._full_pipeline_thread.start()
-        self._task_log_window.show()
-
-    def _on_full_pipeline_success(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[SUCCESS] {message}")
-            self._task_log_window.set_success("Full path pipeline completed.")
-            self._task_log_window.accept()
-
+    def _after_full_pipeline_success(self, message: str) -> None:
         self.home_page.refresh_project_info()
-        QMessageBox.information(self, "Full path Pipeline", message)
-
-    def _on_full_pipeline_error(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[ERROR] {message}")
-            self._task_log_window.set_error("Full path pipeline failed.")
-
-        QMessageBox.critical(self, "Full path Pipeline failed", message)
-
-    def _on_full_pipeline_finished(self) -> None:
-        self._full_pipeline_thread = None
-        self._full_pipeline_worker = None
-        self._task_log_window = None
 
     def start_ply_to_glb(self) -> None:
         if not self.current_mesh_id:
@@ -513,17 +471,6 @@ class MainWindow(QMainWindow):
             return
 
         settings = dialog.get_settings()
-
-        reply = QMessageBox.question(
-            self,
-            "Convert PLY to GLB",
-            f"Are you sure you want to convert this PLY: '{self.current_mesh_id}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-
-        if reply != QMessageBox.StandardButton.Yes:
-            return
 
         self._task_log_window = TaskLogWindow(
             f"Export GLB - {self.current_mesh_id}",
@@ -590,17 +537,6 @@ class MainWindow(QMainWindow):
             return
 
         settings = dialog.get_settings()
-
-        reply = QMessageBox.question(
-            self,
-            "Convert Point Cloud to Mesh",
-            f"Convert point cloud for project '{self.current_mesh_id}' to mesh?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-
-        if reply != QMessageBox.StandardButton.Yes:
-            return
 
         self._task_log_window = TaskLogWindow(
             f"Point Cloud to Mesh - {self.current_mesh_id}",

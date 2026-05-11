@@ -2,14 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-
 import numpy as np
 import pymeshlab
 
 from .settings.fill_holes_settings import FillHolesSettings
 
 
+
 LogCallback = Callable[[str], None] | None
+CancelCallback = Callable[[], None] | None
+
+def _check_cancelled(cancel_callback: CancelCallback) -> None:
+    if cancel_callback is not None:
+        cancel_callback()
 
 
 def _mesh_count(ms: pymeshlab.MeshSet) -> int:
@@ -21,6 +26,7 @@ def _mesh_count(ms: pymeshlab.MeshSet) -> int:
 def keep_largest_connected_component(
     ms: pymeshlab.MeshSet,
     log_callback: Callable[[str], None] | None = None,
+    cancel_callback: CancelCallback = None
 ) -> int:
     def log(message: str) -> None:
         if log_callback is not None:
@@ -48,7 +54,12 @@ def keep_largest_connected_component(
 
     vertex_to_faces: list[list[int]] = [[] for _ in range(vertex_count)]
 
+    _check_cancelled(cancel_callback)
+
     for face_index, face in enumerate(faces):
+        if face_index % 10_000 == 0:
+            _check_cancelled(cancel_callback)
+
         for vertex_index in face:
             vertex_to_faces[int(vertex_index)].append(face_index)
 
@@ -56,6 +67,9 @@ def keep_largest_connected_component(
     components: list[list[int]] = []
 
     for start_face in range(face_count):
+        if start_face % 10_000 == 0:
+            _check_cancelled(cancel_callback)
+
         if visited[start_face]:
             continue
 
@@ -64,6 +78,9 @@ def keep_largest_connected_component(
         component_faces: list[int] = []
 
         while stack:
+            if len(component_faces) % 10_000 == 0:
+                _check_cancelled(cancel_callback)
+
             face_index = stack.pop()
             component_faces.append(face_index)
 
@@ -200,6 +217,7 @@ def close_mesh_holes_below_top_percent(
     top_ignore_percent: float,
     max_hole_boundary_vertices: int = 200,
     log_callback: Callable[[str], None] | None = None,
+    cancel_callback: CancelCallback = None
 ) -> int:
     def log(message: str) -> None:
         if log_callback is not None:
@@ -248,7 +266,9 @@ def close_mesh_holes_below_top_percent(
 
     edge_count: dict[tuple[int, int], int] = {}
 
-    for face in faces:
+    for face_index, face in enumerate(faces):
+        if face_index % 10_000 == 0:
+            _check_cancelled(cancel_callback)
         a = int(face[0])
         b = int(face[1])
         c = int(face[2])
@@ -272,7 +292,9 @@ def close_mesh_holes_below_top_percent(
     visited_edges: set[tuple[int, int]] = set()
     loops: list[list[int]] = []
 
-    for start_u, start_v in boundary_edges:
+    for edge_index, (start_u, start_v) in enumerate(boundary_edges):
+        if edge_index % 10_000 == 0:
+            _check_cancelled(cancel_callback)
         start_edge = (min(start_u, start_v), max(start_u, start_v))
 
         if start_edge in visited_edges:
@@ -336,7 +358,10 @@ def close_mesh_holes_below_top_percent(
     skipped_invalid_count = 0
     created_faces = 0
 
-    for loop in loops:
+    for loop_index, loop in enumerate(loops):
+        if loop_index % 1_000 == 0:
+            _check_cancelled(cancel_callback)
+
         if len(loop) < 3:
             skipped_invalid_count += 1
             continue
@@ -429,6 +454,7 @@ def fill_holes(
     output_file: str | Path,
     settings: FillHolesSettings | None = None,
     log_callback: LogCallback = None,
+    cancel_callback: CancelCallback = None,
 ) -> None:
     if settings is None:
         settings = FillHolesSettings()
@@ -450,9 +476,13 @@ def fill_holes(
 
     ms = pymeshlab.MeshSet()
 
+    _check_cancelled(cancel_callback)
+
     log("Loading mesh...")
     ms.load_new_mesh(str(input_path))
     log("Loading mesh done.")
+
+    _check_cancelled(cancel_callback)
 
     original_index = 0
     original_mesh = ms.mesh(original_index)
@@ -466,16 +496,21 @@ def fill_holes(
     log("Detected mesh input.")
 
     ms.set_current_mesh(original_index)
+    final_mesh_index = original_index
 
     log("Cleaning mesh...")
+    _check_cancelled(cancel_callback)
     ms.meshing_remove_unreferenced_vertices()
     ms.meshing_remove_duplicate_faces()
     ms.meshing_remove_duplicate_vertices()
+    _check_cancelled(cancel_callback)
     log("Cleaning mesh done.")
 
     log("Repairing topology...")
+    _check_cancelled(cancel_callback)
     ms.meshing_repair_non_manifold_edges()
     ms.meshing_repair_non_manifold_vertices()
+    _check_cancelled(cancel_callback)
     log("Repairing topology done.")
 
     if getattr(settings, "keep_largest_component", False):
@@ -483,6 +518,7 @@ def fill_holes(
         final_mesh_index = keep_largest_connected_component(
             ms,
             log_callback=log,
+            cancel_callback=cancel_callback,
         )
         ms.set_current_mesh(final_mesh_index)
         log("Largest connected component cleanup done.")
@@ -490,12 +526,15 @@ def fill_holes(
         log("Skipping largest connected component cleanup.")
 
     log("Computing normals...")
+    _check_cancelled(cancel_callback)
     ms.compute_normal_per_face()
     ms.compute_normal_per_vertex()
+    _check_cancelled(cancel_callback)
     log("Computing normals done.")
 
     if settings.run_poisson_on_mesh:
         log("Running Poisson reconstruction on mesh input...")
+        _check_cancelled(cancel_callback)
         ms.generate_surface_reconstruction_screened_poisson(
             depth=settings.poisson_depth,
             fulldepth=settings.poisson_fulldepth,
@@ -506,6 +545,7 @@ def fill_holes(
             iters=settings.poisson_iters,
             preclean=settings.poisson_preclean,
         )
+        _check_cancelled(cancel_callback)
         log("Poisson reconstruction done.")
 
         final_mesh_index = _mesh_count(ms) - 1
@@ -532,6 +572,7 @@ def fill_holes(
                 200,
             ),
             log_callback=log,
+            cancel_callback=cancel_callback,
         )
         ms.set_current_mesh(final_mesh_index)
     else:
@@ -561,18 +602,22 @@ def fill_holes(
     ms.set_current_mesh(final_mesh_index)
 
     log("Final cleanup...")
+    _check_cancelled(cancel_callback)
     ms.meshing_remove_duplicate_faces()
     ms.meshing_remove_duplicate_vertices()
     ms.meshing_remove_unreferenced_vertices()
+    _check_cancelled(cancel_callback)
     log("Final cleanup done.")
 
     log("Saving repaired mesh...")
+    _check_cancelled(cancel_callback)
     ms.save_current_mesh(
         str(temp_output_path),
         save_vertex_color=True,
         save_wedge_texcoord=False,
         save_textures=False,
     )
+    _check_cancelled(cancel_callback)
 
     if temp_output_path != output_path:
         temp_output_path.replace(output_path)
