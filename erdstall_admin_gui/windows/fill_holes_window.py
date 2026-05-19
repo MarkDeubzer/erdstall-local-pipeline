@@ -62,7 +62,7 @@ class FillHolesWindow(QDialog):
         repair_form = QFormLayout(repair_group)
         self.repair_group = repair_group
 
-        self.close_hole_under_percent = self._doublespinbox(0.0, 1.0, 0.01, 2)
+        self.close_hole_under_percent = self._doublespinbox(0.0, 100.0, 10.0, 2)
         self.max_hole_boundary_vertices = self._spinbox(0, 100_000)
 
         repair_form.addRow(

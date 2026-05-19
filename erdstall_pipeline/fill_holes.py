@@ -234,6 +234,7 @@ def close_mesh_holes_below_top_percent(
         log("Selective hole closing skipped: mesh has no vertices or faces.")
         return _mesh_count(ms) - 1
 
+    top_ignore_percent = float(top_ignore_percent) / 100
     top_ignore_percent = max(0.0, min(1.0, float(top_ignore_percent)))
 
     max_hole_boundary_vertices = int(max_hole_boundary_vertices)
