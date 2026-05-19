@@ -71,3 +71,6 @@ temp/
 
 *.bak
 *.swp
+
+node_modules/
+
