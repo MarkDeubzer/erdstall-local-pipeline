@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config import IMAGE_DEFAULT_FACTOR
+from erdstall_pipeline.config import IMAGE_DEFAULT_FACTOR
 
 
 @dataclass(slots = True)

@@ -1,6 +1,6 @@
 import numpy as np
 
-from .config import (
+from erdstall_pipeline.config import (
     FILES_DIR,
     VOLUME_FILENAME,
     SKELETON_FILENAME,

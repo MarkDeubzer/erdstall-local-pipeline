@@ -2,7 +2,7 @@ import logging
 import shutil
 from pathlib import Path
 
-from .config import PLY_DIR, TEXTURE_DIR, BACKUP_TEXTURE_DIR
+from erdstall_pipeline.config import PLY_DIR, TEXTURE_DIR, BACKUP_TEXTURE_DIR
 
 logger = logging.getLogger(__name__)
 

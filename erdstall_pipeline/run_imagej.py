@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import (
+from erdstall_pipeline.config import (
     FILES_DIR,
     RAW_FROM_PLY_FILENAME,
     SKELETON_FILENAME,

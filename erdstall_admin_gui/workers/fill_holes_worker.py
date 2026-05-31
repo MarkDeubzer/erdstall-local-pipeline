@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config import CONVERTED_MESH
+from erdstall_pipeline.config import CONVERTED_MESH
 from erdstall_admin_gui.workers.cancelable_worker import (
     CancelableWorker,
     CancellationToken,

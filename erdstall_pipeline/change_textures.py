@@ -4,7 +4,7 @@ from PIL import Image, ImageEnhance
 import cv2
 import numpy as np
 
-from .config import IMAGE_DEFAULT_FACTOR
+from erdstall_pipeline.config import IMAGE_DEFAULT_FACTOR
 from .settings.texture_settings import TextureJob, TextureSettings
 
 

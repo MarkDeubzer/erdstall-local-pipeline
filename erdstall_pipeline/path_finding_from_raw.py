@@ -9,7 +9,7 @@ import numpy as np
 import vtk
 from scipy.ndimage import distance_transform_edt
 
-from .config import (
+from erdstall_pipeline.config import (
     FILES_DIR,
     PATH_MESH_FILENAME,
     PATH_OUTPUT_FILENAME,

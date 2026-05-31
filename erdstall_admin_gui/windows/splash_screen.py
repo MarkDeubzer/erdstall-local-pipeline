@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config import BASE_DIR
+from erdstall_pipeline.config import BASE_DIR
 
 
 class SplashScreen(QWidget):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from config import INITIAL_MESH_REDUCTION_FACTOR
+from erdstall_pipeline.config import INITIAL_MESH_REDUCTION_FACTOR
 
 
 @dataclass

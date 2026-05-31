@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import pymeshlab
 
-from .config import PATCHES_DIR
+from erdstall_pipeline.config import PATCHES_DIR
 
 def clear_patches(
         filled_holes_input_file: str | Path,

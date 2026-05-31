@@ -8,7 +8,7 @@ import vtk
 from scipy.ndimage import binary_fill_holes
 from vtkmodules.util import numpy_support
 
-from .config import FILES_DIR, RAW_FROM_PLY_FILENAME, SIZE
+from erdstall_pipeline.config import FILES_DIR, RAW_FROM_PLY_FILENAME, SIZE
 
 
 def center_and_scale_mesh(mesh, target_size: int = SIZE):

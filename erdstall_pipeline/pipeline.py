@@ -1,9 +1,9 @@
 from pathlib import Path
 import shutil
 
-from config import CONVERTED_MESH
+from erdstall_pipeline.config import CONVERTED_MESH
 from .clear_patches import clear_patches
-from .config import FINAL_MESH, ORIGINAL_MESH, PATCHES_DIR, PLY_DIR, REPAIRED_MESH, TEXTURE_DIR, BACKUP_TEXTURE_DIR
+from erdstall_pipeline.config import FINAL_MESH, ORIGINAL_MESH, PATCHES_DIR, PLY_DIR, REPAIRED_MESH, TEXTURE_DIR, BACKUP_TEXTURE_DIR
 from .fill_holes import fill_holes
 from .settings.fill_holes_settings import FillHolesSettings
 from .find_patches import find_patches, get_patches_json

@@ -10,7 +10,7 @@ from .csv_to_json import csv_to_json_file
 import pymeshlab
 from collections.abc import Callable
 
-from .config import (
+from erdstall_pipeline.config import (
     DATA_DIR,
     WORK_DIRNAME,
     FINAL_MESH,
