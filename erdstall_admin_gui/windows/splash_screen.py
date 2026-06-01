@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
+import sys
+from pathlib import Path
 from erdstall_pipeline.config import BASE_DIR
 
 
@@ -23,6 +24,12 @@ class SplashScreen(QWidget):
 
         self._build_ui()
 
+    @staticmethod
+    def resource_path(relative_path: str)-> Path:
+        if(getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")):
+            return Path(sys._MEIPASS) / relative_path
+        return BASE_DIR / relative_path
+
     def _build_ui(self)->None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40,40,40,40)
@@ -32,7 +39,7 @@ class SplashScreen(QWidget):
         self.logo_label = QLabel()
         self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        pixmap = QPixmap(str(BASE_DIR / "public" / "Logo.png"))
+        pixmap = QPixmap(str(self.resource_path("public/Logo.png")))
 
         if not pixmap.isNull():
             self.logo_label.setPixmap(

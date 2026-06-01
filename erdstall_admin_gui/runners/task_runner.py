@@ -21,7 +21,7 @@ class LoggedCancelableTaskRunnerMixin:
         error_status: str,
         success_box_title: str,
         error_box_title: str,
-        on_success: Callable[None]
+        on_success: Callable[[], None] | None = None,
     ) -> None:
         if getattr(self, thread_attr) is not None:
             QMessageBox.information(self, "Busy", busy_message)
@@ -186,7 +186,7 @@ class LoggedCancelableTaskRunnerMixin:
 
         if result == "success":
             if on_success is not None:
-                on_success(message)
+                on_success()
 
             if auto_close:
                 QTimer.singleShot(0, log_window.accept)
