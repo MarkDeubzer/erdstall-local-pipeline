@@ -235,8 +235,8 @@ class GlbExportWindow(QDialog):
             main_include_normals=self.main_include_normals.isChecked(),
             mobile_include_normals=self.mobile_include_normals.isChecked(),
         )
-
-    def _wrap(self, layout: QHBoxLayout) -> QWidget:
+    @staticmethod
+    def _wrap(layout: QHBoxLayout) -> QWidget:
         widget = QWidget()
         widget.setLayout(layout)
         return widget

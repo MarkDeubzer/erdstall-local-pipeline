@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 from collections.abc import Callable
-
 from PySide6.QtCore import QObject, QThread, QTimer
 from PySide6.QtWidgets import QMessageBox
-
 from erdstall_admin_gui.windows.task_log_window import TaskLogWindow
 from erdstall_admin_gui.workers.cancelable_worker import CancellationToken
 
@@ -24,7 +21,7 @@ class LoggedCancelableTaskRunnerMixin:
         error_status: str,
         success_box_title: str,
         error_box_title: str,
-        on_success: Callable[[str], None] | None = None,
+        on_success: Callable[None]
     ) -> None:
         if getattr(self, thread_attr) is not None:
             QMessageBox.information(self, "Busy", busy_message)

@@ -69,8 +69,8 @@ class AddProjectWindow(QDialog):
         self.cancel_button.clicked.connect(self.reject)
         self.create_button.clicked.connect(self._validate_and_accept)
 
-
-    def _wrap(self, layout: QHBoxLayout) -> QWidget:
+    @staticmethod
+    def _wrap(layout: QHBoxLayout) -> QWidget:
         widget = QWidget()
         widget.setLayout(layout)
         return widget

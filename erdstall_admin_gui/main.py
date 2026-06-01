@@ -1,9 +1,7 @@
 from __future__ import annotations
-import sys
 from pathlib import Path
-
-import qdarktheme
-
+from qdarktheme import setup_theme
+from sys import argv
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
@@ -11,10 +9,10 @@ from erdstall_admin_gui.windows.splash_screen import SplashScreen
 from erdstall_admin_gui.windows.main_window import MainWindow
 
 def main() -> int:
-    app = QApplication(sys.argv)
+    app = QApplication(argv)
     BASE_DIR = Path(__file__).resolve().parent
     app.setWindowIcon(QIcon(str(BASE_DIR / "public" / "admin_icon.png")))
-    qdarktheme.setup_theme("dark")
+    setup_theme("dark")
 
     splash = SplashScreen()
     splash.show()

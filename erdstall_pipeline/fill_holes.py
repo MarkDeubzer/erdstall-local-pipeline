@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pymeshlab
 
-from .settings.fill_holes_settings import FillHolesSettings
+from erdstall_pipeline.settings.fill_holes_settings import FillHolesSettings
 
 
 
@@ -343,7 +343,6 @@ def close_mesh_holes_below_top_percent(
     center_colors: list[np.ndarray] = []
 
     use_colors = False
-    vertex_colors = None
 
     try:
         vertex_colors = mesh.vertex_color_matrix()
@@ -457,8 +456,7 @@ def fill_holes(
     log_callback: LogCallback = None,
     cancel_callback: CancelCallback = None,
 ) -> None:
-    if settings is None:
-        settings = FillHolesSettings()
+    active_settings = settings if settings is not None else FillHolesSettings()
 
     def log(message: str) -> None:
         if log_callback is not None:
@@ -514,7 +512,7 @@ def fill_holes(
     _check_cancelled(cancel_callback)
     log("Repairing topology done.")
 
-    if getattr(settings, "keep_largest_component", False):
+    if getattr(active_settings, "keep_largest_component", False):
         log("Keeping only largest connected component...")
         final_mesh_index = keep_largest_connected_component(
             ms,
@@ -533,18 +531,18 @@ def fill_holes(
     _check_cancelled(cancel_callback)
     log("Computing normals done.")
 
-    if settings.run_poisson_on_mesh:
+    if active_settings.run_poisson_on_mesh:
         log("Running Poisson reconstruction on mesh input...")
         _check_cancelled(cancel_callback)
         ms.generate_surface_reconstruction_screened_poisson(
-            depth=settings.poisson_depth,
-            fulldepth=settings.poisson_fulldepth,
-            cgdepth=settings.poisson_cgdepth,
-            scale=settings.poisson_scale,
-            samplespernode=settings.poisson_samplespernode,
-            pointweight=settings.poisson_pointweight,
-            iters=settings.poisson_iters,
-            preclean=settings.poisson_preclean,
+            depth=active_settings.poisson_depth,
+            fulldepth=active_settings.poisson_fulldepth,
+            cgdepth=active_settings.poisson_cgdepth,
+            scale=active_settings.poisson_scale,
+            samplespernode=active_settings.poisson_samplespernode,
+            pointweight=active_settings.poisson_pointweight,
+            iters=active_settings.poisson_iters,
+            preclean=active_settings.poisson_preclean,
         )
         _check_cancelled(cancel_callback)
         log("Poisson reconstruction done.")
@@ -552,7 +550,7 @@ def fill_holes(
         final_mesh_index = _mesh_count(ms) - 1
         ms.set_current_mesh(final_mesh_index)
 
-        if getattr(settings, "keep_largest_component", False):
+        if getattr(active_settings, "keep_largest_component", False):
             log("Keeping only largest connected component after Poisson...")
             final_mesh_index = keep_largest_connected_component(
                 ms,
@@ -563,12 +561,12 @@ def fill_holes(
         else:
             log("Skipping largest component cleanup after Poisson.")
 
-    if settings.close_holes_on_mesh_input:
+    if active_settings.close_holes_on_mesh_input:
         final_mesh_index = close_mesh_holes_below_top_percent(
             ms,
-            top_ignore_percent=settings.close_hole_under_percent,
+            top_ignore_percent=active_settings.close_hole_under_percent,
             max_hole_boundary_vertices=getattr(
-                settings,
+                active_settings,
                 "max_hole_boundary_vertices",
                 200,
             ),
@@ -579,14 +577,14 @@ def fill_holes(
     else:
         log("Skipping hole closing on mesh input.")
 
-    if settings.smooth_mesh_input:
+    if active_settings.smooth_mesh_input:
         smooth_current_mesh(
             ms,
-            iterations=settings.mesh_smoothing_iterations,
+            iterations=active_settings.mesh_smoothing_iterations,
             log_callback=log,
         )
 
-    if settings.transfer_texture_to_vertex_colors:
+    if active_settings.transfer_texture_to_vertex_colors:
         log("Transferring texture/color to vertex colors...")
 
         try:

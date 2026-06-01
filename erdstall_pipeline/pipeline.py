@@ -1,14 +1,11 @@
-from pathlib import Path
 import shutil
-
+from pathlib import Path
 from erdstall_pipeline.config import CONVERTED_MESH
-from .clear_patches import clear_patches
-from erdstall_pipeline.config import FINAL_MESH, ORIGINAL_MESH, PATCHES_DIR, PLY_DIR, REPAIRED_MESH, TEXTURE_DIR, BACKUP_TEXTURE_DIR
-from .fill_holes import fill_holes
-from .settings.fill_holes_settings import FillHolesSettings
-from .find_patches import find_patches, get_patches_json
-from .reduce_meshes import reduce_file_size
-from .utils import ensure_dir, validate_mesh_id
+from erdstall_pipeline.config import FINAL_MESH, ORIGINAL_MESH, PLY_DIR, REPAIRED_MESH, TEXTURE_DIR, BACKUP_TEXTURE_DIR
+from erdstall_pipeline.fill_holes import fill_holes
+from erdstall_pipeline.settings.fill_holes_settings import FillHolesSettings
+from erdstall_pipeline.reduce_meshes import reduce_file_size
+from erdstall_pipeline.utils import ensure_dir, validate_mesh_id
 
 from collections.abc import Callable
 
@@ -27,20 +24,19 @@ def mesh_base_dir(mesh_id: str) -> Path:
 def create_project_structure(mesh_id: str) -> Path:
     base = mesh_base_dir(mesh_id)
     ensure_dir(base)
-    ensure_dir(base / PATCHES_DIR)
     ensure_dir(base / TEXTURE_DIR)
     ensure_dir(base / BACKUP_TEXTURE_DIR)
     return base
 
 
 def ply_face_count(path: str |Path) -> int:
-    path = Path(path)
+    p = Path(path)
 
-    if not path.exists():
+    if not p.exists():
         return 0
 
     try:
-        with path.open("rb") as file:
+        with p.open("rb") as file:
             for raw_line in file:
                 line = raw_line.decode("utf-8", errors="ignore").strip()
 
@@ -51,7 +47,7 @@ def ply_face_count(path: str |Path) -> int:
 
                 if line == "end_header":
                     break
-    except Exception as e:
+    except OSError:
         return 0
 
     return 0
@@ -69,9 +65,7 @@ def run_fill(
     settings: FillHolesSettings | None = None,
     log_callback: LogCallback = None,
 ) -> Path:
-    if settings is None:
-        settings = FillHolesSettings()
-
+    active_settings = settings if settings is not None else FillHolesSettings()
     base = create_project_structure(mesh_id)
     original = base / ORIGINAL_MESH
     converted = base / CONVERTED_MESH
@@ -96,15 +90,15 @@ def run_fill(
     fill_holes(
         str(input_mesh),
         str(output_mesh),
-        settings=settings,
+        settings=active_settings,
         log_callback=log_callback,
     )
 
-    if settings.reduce_size:
+    if active_settings.reduce_size:
         reduce_file_size(
             str(output_mesh),
             initial_mesh_reduction=True,
-            compression_percentage=settings.mesh_reduction_percent,
+            compression_percentage=active_settings.mesh_reduction_percent,
         )
 
     return output_mesh
@@ -138,36 +132,8 @@ def initialize_project(
     return base
 
 
-def run_patch_detection(mesh_id: str, log_callback: LogCallback = None) -> dict:
-    def log(message: str) -> None:
-        if log_callback is not None:
-            log_callback(message)
-        else:
-            print(message)
-    
-    base = create_project_structure(mesh_id)
-    repaired = base / REPAIRED_MESH
-    original = base / ORIGINAL_MESH
-    patches_dir = base / PATCHES_DIR
 
-    if not repaired.exists():
-        raise PipelineError(f"Missing repaired mesh: {repaired}")
-    if not original.exists():
-        raise PipelineError(f"Missing original mesh: {original}")
-    
-    log(f"Starting patch detection for: {mesh_id}")
-    log(f"Original mesh: {original}")
-    log(f"Repaired mesh: {repaired}")
-
-    find_patches(str(repaired), str(original), str(patches_dir),  log_callback=log,)
-    data = get_patches_json(str(base))
-    result = data or {"total_patches": 0, "patches": []}
-
-    log(f"Total patches found: {result['total_patches']}")
-    return result
-
-
-def run_finalize(mesh_id: str, unused_patches: list[str] | None = None) -> Path:
+def run_finalize(mesh_id: str) -> Path:
     base = create_project_structure(mesh_id)
     repaired = base / REPAIRED_MESH
     final_mesh = base / FINAL_MESH
@@ -175,9 +141,6 @@ def run_finalize(mesh_id: str, unused_patches: list[str] | None = None) -> Path:
     if not repaired.exists():
         raise PipelineError(f"Missing repaired mesh: {repaired}")
 
-    if unused_patches:
-        clear_patches(str(repaired), str(final_mesh), unused_patches)
-    else:
-        shutil.copy2(repaired, final_mesh)
+    shutil.copy2(repaired, final_mesh)
 
     return final_mesh

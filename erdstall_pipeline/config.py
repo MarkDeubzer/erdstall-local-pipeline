@@ -12,9 +12,6 @@ REPAIRED_MESH = "repaired_mesh.ply"
 FINAL_MESH = "mesh.ply"
 CONVERTED_MESH = "converted.ply"
 
-PATCHES_DIR = "patches"
-PATCHES_JSON = "patches.json"
-
 TEXTURE_DIR = "mesh"
 BACKUP_TEXTURE_DIR = "textures_backup"
 

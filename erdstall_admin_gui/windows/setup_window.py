@@ -128,23 +128,26 @@ class SetupWindow(QWidget):
         self._set_busy(True)
         self.status_label.setText("Running...")
 
-        self._thread = QThread()
-        self._worker = SetupWorker()
+        thread = QThread()
+        worker = SetupWorker()
 
-        self._worker.moveToThread(self._thread)
+        self._thread = thread
+        self._worker = worker
+
+        worker.moveToThread(thread)
 
 
-        self._thread.started.connect(self._worker.run)
-        self._worker.log.connect(self._log)
-        self._worker.success.connect(self._success)
-        self._worker.error.connect(self._error)
+        thread.started.connect(worker.run)
+        worker.log.connect(self._log)
+        worker.success.connect(self._success)
+        worker.error.connect(self._error)
 
-        self._worker.finished.connect(self._thread.quit)
-        self._worker.finished.connect(self._worker.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.finished.connect(self._done)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._done)
 
-        self._thread.start()
+        thread.start()
 
     def _success(self, msg: str) -> None:
         self._log(f" [SUCCESS] {msg}")

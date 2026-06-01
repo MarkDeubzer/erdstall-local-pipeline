@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMainWindow,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -94,15 +93,17 @@ class TextureWindow(QWidget):
 
         self.toggle_same_folder(True)
 
-    def _create_spinbox(self) -> QDoubleSpinBox:
+    @staticmethod
+    def _create_spinbox() -> QDoubleSpinBox:
         spinbox = QDoubleSpinBox()
         spinbox.setRange(0.0,5.0)
         spinbox.setDecimals(2)
         spinbox.setSingleStep(0.1)
         spinbox.setValue(1.0)
         return spinbox
-    
-    def _wrap_layout(self, layout: QHBoxLayout)-> QWidget:
+
+    @staticmethod
+    def _wrap_layout(layout: QHBoxLayout)-> QWidget:
         widget = QWidget()
         widget.setLayout(layout)
         return widget
@@ -117,8 +118,6 @@ class TextureWindow(QWidget):
     
     @Slot()
     def select_output_folder(self)-> None:
-        if(self.same_folder_checkbox.isChecked()):
-            return
         folder = QFileDialog.getExistingDirectory(self, "Select output texture folder")
         if folder: self.output_folder_edit.setText(folder)
 
@@ -186,25 +185,28 @@ class TextureWindow(QWidget):
         self.status_label.setText("Processing...")
         self.append_log("Preparing worker...")
 
-        self.thread = QThread()
-        self.worker = TextureWorker(
+        thread = QThread()
+        worker = TextureWorker(
             input_folder=input_folder,
             output_folder=output_folder,
             settings=settings
         )
 
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.log.connect(self.append_log)
-        self.worker.finished.connect(self.on_processing_finished)
-        self.worker.error.connect(self.on_processing_error)
+        self.thread = thread
+        self.worker = worker
 
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.error.connect(self.thread.quit)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.log.connect(self.append_log)
+        worker.finished.connect(self.on_processing_finished)
+        worker.error.connect(self.on_processing_error)
 
-        self.thread.finished.connect(self.thread.deleteLater)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
 
-        self.thread.start()
+        thread.finished.connect(thread.deleteLater)
+
+        thread.start()
     
     @Slot()
     def on_processing_finished(self) -> None:

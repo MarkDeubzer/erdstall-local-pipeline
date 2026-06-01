@@ -1,9 +1,6 @@
 from __future__ import annotations
-
 from pathlib import Path
-
 from PySide6.QtCore import QObject, Signal, Slot
-
 from erdstall_pipeline.change_textures import process_model_textures
 from erdstall_pipeline.settings.texture_settings import TextureSettings
 

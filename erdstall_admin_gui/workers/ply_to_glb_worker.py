@@ -9,6 +9,7 @@ import time
 
 import numpy as np
 import trimesh
+from trimesh.exchange.gltf import export_glb
 
 from erdstall_admin_gui.workers.cancelable_worker import (
     CancelableWorker,
@@ -86,7 +87,7 @@ class PlyToGlbWorker(CancelableWorker):
 
         self.log.emit(f"Reading {label} PLY file: {input_path}")
 
-        loaded = trimesh.load(str(input_path), process=False)
+        loaded = trimesh.load_mesh(str(input_path), process=False)
 
         _check_cancelled(cancel_callback)
 
@@ -195,7 +196,7 @@ class PlyToGlbWorker(CancelableWorker):
             f"(include_normals={include_normals})"
         )
 
-        glb_bytes = trimesh.exchange.gltf.export_glb(
+        glb_bytes = export_glb(
             scene,
             include_normals=include_normals,
             tree_postprocessor=self._make_double_sided_opaque,
@@ -228,7 +229,8 @@ class PlyToGlbWorker(CancelableWorker):
 
         return self.main_include_normals
 
-    def _find_gltf_transform_executable(self) -> str | None:
+    @staticmethod
+    def _find_gltf_transform_executable() -> str | None:
         roots = [
             Path(BASE_DIR),
             Path.cwd(),
@@ -244,7 +246,8 @@ class PlyToGlbWorker(CancelableWorker):
             if local_unix.exists():
                 return str(local_unix)
 
-        return shutil.which("gltf-transform")
+        cmd: str = "gltf-transform"
+        return shutil.which(cmd)
 
     def _build_gltf_transform_command(
         self,
@@ -385,9 +388,8 @@ class PlyToGlbWorker(CancelableWorker):
             f"{original_size_mb:.2f} MB -> {optimized_size_mb:.2f} MB "
             f"({reduction_percent:.1f}% smaller)"
         )
-
+    @staticmethod
     def _force_vertex_colors_opaque(
-        self,
         mesh: trimesh.Trimesh,
         cancel_callback: CancelCallback = None,
     ) -> None:
@@ -404,15 +406,13 @@ class PlyToGlbWorker(CancelableWorker):
         if vertex_colors.ndim != 2:
             return
 
-        # Important:
-        # RGB colors are already opaque and smaller than RGBA.
-        # Therefore we only fix alpha when alpha already exists.
         if vertex_colors.shape[1] >= 4:
             vertex_colors = vertex_colors.copy()
             vertex_colors[:, 3] = 255
             mesh.visual.vertex_colors = vertex_colors
 
-    def _clean_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    @staticmethod
+    def _clean_mesh(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         mesh.remove_unreferenced_vertices()
         mesh.remove_infinite_values()
 
@@ -426,8 +426,8 @@ class PlyToGlbWorker(CancelableWorker):
 
         return mesh
 
+    @staticmethod
     def _combined_bounds(
-        self,
         geometries: list[trimesh.Trimesh],
     ) -> tuple[np.ndarray, np.ndarray]:
         if not geometries:
@@ -593,8 +593,8 @@ class PlyToGlbWorker(CancelableWorker):
             geometry.apply_transform(rotation)
 
         self.log.emit("Export rotation done.")
-
-    def _make_double_sided_opaque(self, tree: dict) -> dict:
+    @staticmethod
+    def _make_double_sided_opaque(tree: dict) -> dict:
         materials = tree.setdefault("materials", [])
 
         default_material_index = len(materials)
@@ -636,8 +636,8 @@ class PlyToGlbWorker(CancelableWorker):
                     primitive["material"] = default_material_index
 
         return tree
-
-    def _file_size_mb(self, path: Path) -> float:
+    @staticmethod
+    def _file_size_mb(path: Path) -> float:
         if not path.exists():
             return 0.0
 

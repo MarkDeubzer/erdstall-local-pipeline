@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMainWindow, QStackedWidget
+from PySide6.QtWidgets import QMainWindow, QStackedWidget, QDialog
 
 from erdstall_admin_gui.runners.task_runner import LoggedCancelableTaskRunnerMixin
 from erdstall_admin_gui.windows.home_page import HomePage
@@ -13,7 +13,6 @@ from erdstall_admin_gui.windows.add_project_window import AddProjectWindow
 from erdstall_admin_gui.workers.init_worker import ProjectInitWorker
 from PySide6.QtCore import Qt,QThread
 from erdstall_admin_gui.windows.task_log_window import TaskLogWindow
-from erdstall_admin_gui.workers.patch_detection_worker import PatchDetectionWorker
 from erdstall_admin_gui.windows.add_path_points_window import AddPathPointsWindow
 from erdstall_admin_gui.workers.path_points_worker import PathPointsWorker
 from erdstall_admin_gui.windows.fill_holes_window import FillHolesWindow
@@ -55,8 +54,6 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         self._init_thread: QThread | None  = None
         self._init_worker: ProjectInitWorker | None = None
         self._task_log_window: TaskLogWindow | None = None
-        self._patch_thread: QThread | None = None
-        self._patch_worker: PatchDetectionWorker | None = None
 
         self._fill_thread: QThread | None = None
         self._fill_worker: FillHolesWorker | None = None
@@ -119,7 +116,6 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         self.setup_page = SetupWindow()
 
         self.home_page.fill_holes_requested.connect(self.open_fill_holes_window)
-        self.home_page.patch_detection_requested.connect(self.start_patch_detection)
         self.home_page.path_points_requested.connect(self.open_path_points_window)
         self.home_page.path_full_pipeline_requested.connect(self.start_full_pipeline)
         self.home_page.point_cloud_to_mesh_requested.connect(
@@ -228,7 +224,7 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
     def open_add_project_window(self)-> None:
         window = AddProjectWindow(self)
 
-        if window.exec() != AddProjectWindow.Accepted:
+        if window.exec() != QDialog.DialogCode.Accepted:
             return
         
         self._start_project_init(
@@ -245,26 +241,29 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         if self._init_thread is not None:
             QMessageBox.information(self, "Busy", "A project is already being created")
             return
-        
-        self._init_thread = QThread()
-        self._init_worker = ProjectInitWorker(mesh_id, mesh_file, texture_dir)
 
-        self._init_worker.moveToThread(self._init_thread)
+        thread = QThread(self)
+        worker = ProjectInitWorker(mesh_id, mesh_file, texture_dir)
 
-        self._init_thread.started.connect(self._init_worker.run)
-        self._init_worker.success.connect(self._on_project_init_success)
-        self._init_worker.error.connect(self._on_project_init_error)
-        self._init_worker.finished.connect(self._init_thread.quit)
-        self._init_worker.finished.connect(self._init_worker.deleteLater)
-        self._init_thread.finished.connect(self._init_thread.deleteLater)
-        self._init_thread.finished.connect(self._on_project_init_finished)
+        self._init_thread = thread
+        self._init_worker = worker
+
+        worker.moveToThread(thread)
+
+        thread.started.connect(worker.run)
+        worker.success.connect(self._on_project_init_success)
+        worker.error.connect(self._on_project_init_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._on_project_init_finished)
 
         self.add_project_button.setDisabled(True)
         self.refresh_projects_button.setDisabled(True)
 
-        self._init_thread.start()
+        thread.start()
 
-    def _on_project_init_success(self, message: str) -> None:
+    def _on_project_init_success(self) -> None:
         self.load_projects()
 
         if self._init_worker is not None:
@@ -272,8 +271,6 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             items = self.project_list.findItems(mesh_id, Qt.MatchFlag.MatchExactly)
             if items:
                 self.project_list.setCurrentItem(items[0])
-                self.on_project_selected(items[0])
-
 
     def _on_project_init_error(self, message: str) -> None:
         QMessageBox.critical(self, "Project creation failed", message)
@@ -322,60 +319,8 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             on_success = self._after_fill_holes_success
         )
 
-    def _after_fill_holes_success(self, message: str) -> None:
+    def _after_fill_holes_success(self) -> None:
         self.home_page.refresh_project_info()
-
-    
-    def start_patch_detection(self) -> None:
-        if not self.current_mesh_id:
-            QMessageBox.warning(self, "No project selected", "Please select a project first.")
-            return
-
-        if self._patch_thread is not None:
-            QMessageBox.information(self, "Busy", "Patch detection is already running.")
-            return
-
-        self._task_log_window = TaskLogWindow(
-            f"Patch Detection - {self.current_mesh_id}",
-            self,
-        )
-        self._task_log_window.set_running("Running patch detection...")
-        self._patch_thread = QThread()
-        self._patch_worker = PatchDetectionWorker(self.current_mesh_id)
-        self._patch_worker.moveToThread(self._patch_thread)
-
-        self._patch_thread.started.connect(self._patch_worker.run)
-        self._patch_worker.log.connect(self._task_log_window.append_log)
-        self._patch_worker.success.connect(self._on_patch_detection_success)
-        self._patch_worker.error.connect(self._on_patch_detection_error)
-        self._patch_worker.finished.connect(self._patch_thread.quit)
-        self._patch_worker.finished.connect(self._patch_worker.deleteLater)
-        self._patch_thread.finished.connect(self._patch_thread.deleteLater)
-        self._patch_thread.finished.connect(self._on_patch_detection_finished)
-
-        self._patch_thread.start()
-        self._task_log_window.show()
-    
-    def _on_patch_detection_success(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[SUCCESS] {message}")
-            self._task_log_window.set_success("Patch detection completed.")
-            self._task_log_window.accept()
-
-        self.home_page.refresh_project_info()
-        QMessageBox.information(self, "Patch Detection", message)
-
-    def _on_patch_detection_error(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[ERROR] {message}")
-            self._task_log_window.set_error("Patch detection failed.")
-
-        QMessageBox.critical(self, "Patch detection failed", message)
-
-    def _on_patch_detection_finished(self) -> None:
-        self._patch_thread = None
-        self._patch_worker = None
-        self._task_log_window = None
 
     def open_path_points_window(self) -> None:
         if not self.current_mesh_id:
@@ -398,20 +343,23 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             QMessageBox.information(self, "Busy", "Path points creation is already running.")
             return
 
-        self._path_points_thread = QThread()
-        self._path_points_worker = PathPointsWorker(self.current_mesh_id, values)
+        thread = QThread()
+        worker = PathPointsWorker(self.current_mesh_id, values)
 
-        self._path_points_worker.moveToThread(self._path_points_thread)
+        self._path_points_thread = thread
+        self._path_points_worker = worker
 
-        self._path_points_thread.started.connect(self._path_points_worker.run)
-        self._path_points_worker.success.connect(self._on_path_points_success)
-        self._path_points_worker.error.connect(self._on_path_points_error)
-        self._path_points_worker.finished.connect(self._path_points_thread.quit)
-        self._path_points_worker.finished.connect(self._path_points_worker.deleteLater)
-        self._path_points_thread.finished.connect(self._path_points_thread.deleteLater)
-        self._path_points_thread.finished.connect(self._on_path_points_finished)
+        worker.moveToThread(thread)
 
-        self._path_points_thread.start()
+        thread.started.connect(worker.run)
+        worker.success.connect(self._on_path_points_success)
+        worker.error.connect(self._on_path_points_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._on_path_points_finished)
+
+        thread.start()
     
     def _on_path_points_success(self, message: str) -> None:
         self.home_page.refresh_project_info()
@@ -448,7 +396,7 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             on_success=self._after_full_pipeline_success,
         )
 
-    def _after_full_pipeline_success(self, message: str) -> None:
+    def _after_full_pipeline_success(self) -> None:
         self.home_page.refresh_project_info()
 
     def start_ply_to_glb(self) -> None:
@@ -494,7 +442,7 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             on_success=self._after_glb_success,
         )
 
-    def _after_glb_success(self, message: str) -> None:
+    def _after_glb_success(self) -> None:
         self.home_page.refresh_project_info()
 
     def start_point_cloud_to_mesh(self) -> None:
@@ -530,5 +478,5 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             on_success=self._after_point_cloud_to_mesh_success,
         )
 
-    def _after_point_cloud_to_mesh_success(self, message: str) -> None:
+    def _after_point_cloud_to_mesh_success(self) -> None:
         self.home_page.refresh_project_info()

@@ -41,8 +41,8 @@ class FlowLayout(QLayout):
             return self._items.pop(index)
         return None
 
-    def expandingDirections(self) -> Qt.Orientations:
-        return Qt.Orientations(Qt.Orientation(0))
+    def expandingDirections(self) -> Qt.Orientation:
+        return Qt.Orientation(0)
 
     def hasHeightForWidth(self) -> bool:
         return True

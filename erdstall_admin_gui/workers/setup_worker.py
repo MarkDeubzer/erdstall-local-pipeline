@@ -1,9 +1,10 @@
 from __future__ import annotations
-from PySide6.QtCore import QObject, Signal, Slot
-from erdstall_pipeline.settings.app_settings import AppSettings
-import importlib
 import sys
 import os
+from importlib.util import find_spec
+from PySide6.QtCore import QObject, Signal, Slot
+from erdstall_pipeline.settings.app_settings import AppSettings
+
 
 
 class SetupWorker(QObject):
@@ -49,7 +50,7 @@ class SetupWorker(QObject):
 
         for package_name, import_name in required_modules:
             try:
-                if importlib.util.find_spec(import_name) is not None:
+                if find_spec(import_name) is not None:
                     self.log.emit(f"[OK] {package_name}")
                 else:
                     missing.append(package_name)
@@ -81,7 +82,8 @@ class SetupWorker(QObject):
 
         self.log.emit(f"[OK] Fiji found at: {fiji_exe}")
 
-    def _resolve_fiji_executable(self, fiji_path):
+    @staticmethod
+    def _resolve_fiji_executable(fiji_path):
         if fiji_path.is_file():
             return fiji_path
 

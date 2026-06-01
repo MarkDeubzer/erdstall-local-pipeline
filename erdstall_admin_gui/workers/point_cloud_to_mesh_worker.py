@@ -4,7 +4,7 @@ from pathlib import Path
 
 import open3d as o3d
 from erdstall_admin_gui.workers.cancelable_worker import CancelableWorker, CancellationToken
-from erdstall_pipeline.config import ORIGINAL_MESH, PLY_DIR, REPAIRED_MESH, CONVERTED_MESH
+from erdstall_pipeline.config import ORIGINAL_MESH, PLY_DIR, CONVERTED_MESH
 from erdstall_pipeline.convert_point_cloud import point_cloud_to_mesh
 from erdstall_pipeline.settings.point_cloud_settings import PointCloudSettings
 
@@ -29,7 +29,9 @@ class PointCloudToMeshWorker(CancelableWorker):
             raise FileNotFoundError(f"Original point cloud not found: {input_path}")
 
         self.write_log(f"Reading point cloud: {input_path}")
-        pcd = o3d.io.read_point_cloud(str(input_path))
+
+        path = Path(input_path)
+        pcd = o3d.io.read_point_cloud(path)
 
         self.check_cancelled()
 

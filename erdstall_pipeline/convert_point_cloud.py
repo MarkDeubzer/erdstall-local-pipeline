@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import gc
-from collections.abc import Callable
 import os
-
 import numpy as np
 import open3d as o3d
+from collections.abc import Callable
 from scipy.spatial import cKDTree
-
-from .settings.point_cloud_settings import PointCloudSettings
+from erdstall_pipeline.settings.point_cloud_settings import PointCloudSettings
 
 
 LogCallback = Callable[[str], None] | None
@@ -739,8 +737,7 @@ def _point_cloud_to_mesh_poisson(
     log_callback: LogCallback = None,
     cancel_callback: CancelCallback = None,
 ) -> o3d.geometry.TriangleMesh:
-    if settings is None:
-        settings = PointCloudSettings()
+    active_settings = settings if settings is not None else PointCloudSettings()
 
     def log(message: str) -> None:
         if log_callback is not None:
@@ -754,7 +751,7 @@ def _point_cloud_to_mesh_poisson(
     original_count = len(pcd.points)
     log(f"Input point count: {original_count:,}")
 
-    downsample_size = float(settings.downsample_size)
+    downsample_size = float(active_settings.downsample_size)
     _check_cancelled(cancel_callback)
     if downsample_size > 0:
         log(f"Downsampling point cloud with voxel size {downsample_size}...")
@@ -793,7 +790,7 @@ def _point_cloud_to_mesh_poisson(
         points=points,
         tree=tree,
         log=log,
-        sample_size=int(settings.spacing_sample_size),
+        sample_size=int(active_settings.spacing_sample_size),
     )
     _check_cancelled(cancel_callback)
     log(f"Average point spacing: {avg_spacing:.6f}")
@@ -801,13 +798,13 @@ def _point_cloud_to_mesh_poisson(
     pcd = _densify_point_cloud_local_centroids(
         pcd=pcd,
         avg_spacing=avg_spacing,
-        settings=settings,
+        settings=active_settings,
         log=log,
     )
     _check_cancelled(cancel_callback)
     points = np.asarray(pcd.points, dtype=np.float64)
 
-    if getattr(settings, "densify_point_cloud", False):
+    if getattr(active_settings, "densify_point_cloud", False):
         _check_cancelled(cancel_callback)
         log("Recomputing KDTree after densification...")
         tree = cKDTree(points)
@@ -816,7 +813,7 @@ def _point_cloud_to_mesh_poisson(
             points=points,
             tree=tree,
             log=log,
-            sample_size=int(settings.spacing_sample_size),
+            sample_size=int(active_settings.spacing_sample_size),
         )
         _check_cancelled(cancel_callback)
         log(f"Average point spacing after densification: {avg_spacing:.6f}")
@@ -824,7 +821,7 @@ def _point_cloud_to_mesh_poisson(
     normal_radius, normal_max_nn = _safe_normal_settings(
         point_count=point_count,
         avg_spacing=avg_spacing,
-        settings=settings,
+        settings=active_settings,
         log=log,
     )
     _check_cancelled(cancel_callback)
@@ -837,29 +834,29 @@ def _point_cloud_to_mesh_poisson(
         normal_max_nn=normal_max_nn,
         log=log,
         cancel_callback=cancel_callback,
-        settings=settings,
+        settings=active_settings,
     )
     _check_cancelled(cancel_callback)
     _orient_normals_safely(
         pcd=pcd,
-        settings=settings,
+        settings=active_settings,
         log=log,
     )
     _check_cancelled(cancel_callback)
     poisson_depth = _safe_poisson_depth(
         point_count=point_count,
-        requested_depth=int(settings.poisson_depth),
-        settings=settings,
+        requested_depth=int(active_settings.poisson_depth),
+        settings=active_settings,
         log=log,
     )
     _check_cancelled(cancel_callback)
-    thread_count = _thread_count(settings)
+    thread_count = _thread_count(active_settings)
 
     log(
         "Running Open3D Poisson reconstruction: "
         f"depth={poisson_depth}, "
-        f"scale={settings.poisson_scale}, "
-        f"linear_fit={settings.poisson_linear_fit}, "
+        f"scale={active_settings.poisson_scale}, "
+        f"linear_fit={active_settings.poisson_linear_fit}, "
         f"threads={thread_count}"
     )
     _check_cancelled(cancel_callback)
@@ -867,8 +864,8 @@ def _point_cloud_to_mesh_poisson(
         mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
             pcd,
             depth=poisson_depth,
-            scale=float(settings.poisson_scale),
-            linear_fit=bool(settings.poisson_linear_fit),
+            scale=float(active_settings.poisson_scale),
+            linear_fit=bool(active_settings.poisson_linear_fit),
             n_threads=thread_count,
         )
         _check_cancelled(cancel_callback)
@@ -876,8 +873,8 @@ def _point_cloud_to_mesh_poisson(
         mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
             pcd,
             depth=poisson_depth,
-            scale=float(settings.poisson_scale),
-            linear_fit=bool(settings.poisson_linear_fit),
+            scale=float(active_settings.poisson_scale),
+            linear_fit=bool(active_settings.poisson_linear_fit),
         )
 
     log(
@@ -886,7 +883,7 @@ def _point_cloud_to_mesh_poisson(
     )
     _check_cancelled(cancel_callback)
     density_values = np.asarray(densities)
-    density_quantile = float(settings.poisson_density_quantile)
+    density_quantile = float(active_settings.poisson_density_quantile)
 
     if density_quantile > 0 and density_values.size > 0:
         threshold = float(np.quantile(density_values, density_quantile))
@@ -921,14 +918,14 @@ def _point_cloud_to_mesh_poisson(
 
     mesh = _clean_mesh(mesh, log)
 
-    if int(settings.smoothing_iterations) > 0:
+    if int(active_settings.smoothing_iterations) > 0:
         log(
             f"Applying light Taubin smoothing, "
-            f"iterations={settings.smoothing_iterations}..."
+            f"iterations={active_settings.smoothing_iterations}..."
         )
         _check_cancelled(cancel_callback)
         mesh = mesh.filter_smooth_taubin(
-            number_of_iterations=int(settings.smoothing_iterations),
+            number_of_iterations=int(active_settings.smoothing_iterations),
             lambda_filter=0.5,
             mu=-0.53,
         )
@@ -944,7 +941,7 @@ def _point_cloud_to_mesh_poisson(
             points=points,
             colors=colors,
             log=log,
-            chunk_size=int(settings.color_transfer_chunk_size),
+            chunk_size=int(active_settings.color_transfer_chunk_size),
         )
     else:
         log("Skipping color transfer: point cloud has no colors.")
@@ -999,8 +996,7 @@ def _point_cloud_to_mesh_ball_pivoting(
     log_callback: LogCallback = None,
     cancel_callback: CancelCallback = None,
 ) -> o3d.geometry.TriangleMesh:
-    if settings is None:
-        settings = PointCloudSettings()
+    active_settings = settings if settings is not None else PointCloudSettings()
 
     def log(message: str) -> None:
         if log_callback is not None:
@@ -1036,7 +1032,7 @@ def _point_cloud_to_mesh_ball_pivoting(
     # ------------------------------------------------------------
     # Downsample
     # ------------------------------------------------------------
-    downsample_size = float(settings.downsample_size)
+    downsample_size = float(active_settings.downsample_size)
     _check_cancelled(cancel_callback)
     if downsample_size > 0:
         log(f"Downsampling point cloud with voxel size {downsample_size:.6f}...")
@@ -1063,7 +1059,7 @@ def _point_cloud_to_mesh_ball_pivoting(
         points=points,
         tree=tree,
         log=log,
-        sample_size=int(settings.spacing_sample_size),
+        sample_size=int(active_settings.spacing_sample_size),
     )
     _check_cancelled(cancel_callback)
     log(f"Average point spacing: {avg_spacing:.6f}")
@@ -1107,7 +1103,7 @@ def _point_cloud_to_mesh_ball_pivoting(
         points=points,
         tree=tree,
         log=log,
-        sample_size=int(settings.spacing_sample_size),
+        sample_size=int(active_settings.spacing_sample_size),
     )
     _check_cancelled(cancel_callback)
     log(f"Average point spacing before densification: {avg_spacing:.6f}")
@@ -1115,7 +1111,7 @@ def _point_cloud_to_mesh_ball_pivoting(
     pcd = _densify_point_cloud_local_centroids(
         pcd=pcd,
         avg_spacing=avg_spacing,
-        settings=settings,
+        settings=active_settings,
         log=log,
     )
 
@@ -1124,7 +1120,7 @@ def _point_cloud_to_mesh_ball_pivoting(
     if points.shape[0] < 3:
         raise ValueError("Need at least 3 points after densification.")
     _check_cancelled(cancel_callback)
-    if getattr(settings, "densify_point_cloud", False):
+    if getattr(active_settings, "densify_point_cloud", False):
         log("Recomputing KDTree after densification...")
         tree = cKDTree(points)
 
@@ -1132,7 +1128,7 @@ def _point_cloud_to_mesh_ball_pivoting(
             points=points,
             tree=tree,
             log=log,
-            sample_size=int(settings.spacing_sample_size),
+            sample_size=int(active_settings.spacing_sample_size),
         )
 
         log(f"Average point spacing after densification: {avg_spacing:.6f}")
@@ -1144,7 +1140,7 @@ def _point_cloud_to_mesh_ball_pivoting(
     normal_radius, normal_max_nn = _safe_normal_settings(
         point_count=len(pcd.points),
         avg_spacing=avg_spacing,
-        settings=settings,
+        settings=active_settings,
         log=log,
     )
     _check_cancelled(cancel_callback)
@@ -1154,12 +1150,12 @@ def _point_cloud_to_mesh_ball_pivoting(
         normal_max_nn=normal_max_nn,
         log=log,
         cancel_callback=cancel_callback,
-        settings=settings,
+        settings=active_settings,
     )
     _check_cancelled(cancel_callback)
     _orient_normals_safely(
         pcd=pcd,
-        settings=settings,
+        settings=active_settings,
         log=log,
     )
 
@@ -1203,12 +1199,12 @@ def _point_cloud_to_mesh_ball_pivoting(
     # Remove tiny floating islands
     # ------------------------------------------------------------
     _check_cancelled(cancel_callback)
-    if bool(getattr(settings, "remove_small_components", True)):
+    if bool(getattr(active_settings, "remove_small_components", True)):
         mesh = _remove_small_mesh_components(
             mesh=mesh,
             log=log,
             min_triangle_ratio=float(
-                getattr(settings, "min_component_triangle_ratio", 0.005)
+                getattr(active_settings, "min_component_triangle_ratio", 0.005)
             ),
         )
     else:
@@ -1217,7 +1213,7 @@ def _point_cloud_to_mesh_ball_pivoting(
     # ------------------------------------------------------------
     # Optional smoothing
     # ------------------------------------------------------------
-    smoothing_iterations = int(getattr(settings, "smoothing_iterations", 0))
+    smoothing_iterations = int(getattr(active_settings, "smoothing_iterations", 0))
 
     if smoothing_iterations > 0:
         log(f"Applying Taubin smoothing, iterations={smoothing_iterations}...")
@@ -1251,7 +1247,7 @@ def _point_cloud_to_mesh_ball_pivoting(
                 points=points,
                 colors=colors,
                 log=log,
-                chunk_size=int(settings.color_transfer_chunk_size),
+                chunk_size=int(active_settings.color_transfer_chunk_size),
             )
     else:
         log("Skipping color transfer: point cloud has no colors.")

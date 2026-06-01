@@ -18,7 +18,6 @@ from erdstall_pipeline.config import (
     BACKUP_TEXTURE_DIR,
     FINAL_MESH,
     ORIGINAL_MESH,
-    PATCHES_DIR,
     PATH_JSON_FILENAME,
     PATH_POINTS_FILENAME,
     PLY_DIR,
@@ -30,7 +29,6 @@ from erdstall_admin_gui.widgets.flow_layout import FlowLayout
 
 class HomePage(QWidget):
     fill_holes_requested = Signal()
-    patch_detection_requested = Signal()
     path_points_requested = Signal()
     path_full_pipeline_requested = Signal()
     point_cloud_to_mesh_requested = Signal()
@@ -68,7 +66,7 @@ class HomePage(QWidget):
 
         main_layout.addLayout(header_layout)
         overview_box = QFrame()
-        overview_box.setFrameShape(QFrame.StyledPanel)
+        overview_box.setFrameShape(QFrame.Shape.StyledPanel)
         overview_layout = QVBoxLayout(overview_box)
         overview_layout.setContentsMargins(16, 16, 16, 16)
         overview_layout.setSpacing(12)
@@ -88,16 +86,15 @@ class HomePage(QWidget):
         self._add_status_row(2, "Repaired mesh")
         self._add_status_row(3, "Final mesh")
         self._add_status_row(4, "Mobile mesh")
-        self._add_status_row(5, "Patches folder")
-        self._add_status_row(6, "Textures folder")
-        self._add_status_row(7, "Texture backup")
-        self._add_status_row(8, "Path JSON")
-        self._add_status_row(9, "Path points CSV")
+        self._add_status_row(5, "Textures folder")
+        self._add_status_row(6, "Texture backup")
+        self._add_status_row(7, "Path JSON")
+        self._add_status_row(8, "Path points CSV")
 
         main_layout.addWidget(overview_box)
 
         action_box = QFrame()
-        action_box.setFrameShape(QFrame.StyledPanel)
+        action_box.setFrameShape(QFrame.Shape.StyledPanel)
         action_layout = QVBoxLayout(action_box)
         action_layout.setContentsMargins(16, 16, 16, 16)
         action_layout.setSpacing(12)
@@ -116,9 +113,6 @@ class HomePage(QWidget):
         self.fill_holes_button = QPushButton("Fill Holes")
         self.fill_holes_button.clicked.connect(self.fill_holes_requested.emit)
 
-        self.detect_patches_button = QPushButton("Detect Patches")
-        self.detect_patches_button.clicked.connect(self.patch_detection_requested.emit)
-
         self.path_points_button = QPushButton("Add Path Points")
         self.path_points_button.clicked.connect(self.path_points_requested.emit)
 
@@ -133,7 +127,6 @@ class HomePage(QWidget):
 
         button_row.addWidget(self.convert_point_cloud_button)
         button_row.addWidget(self.fill_holes_button)
-        button_row.addWidget(self.detect_patches_button)
         button_row.addWidget(self.path_points_button)
         button_row.addWidget(self.path_full_pipeline_button)
         button_row.addWidget(self.open_project_folder_button)
@@ -145,7 +138,6 @@ class HomePage(QWidget):
 
         self._set_buttons_enabled(False)
         self.fill_holes_button.setEnabled(False)
-        self.detect_patches_button.setEnabled(False)
         self.path_points_button.setEnabled(False)
         self.path_full_pipeline_button.setEnabled(False)
         self.convert_point_cloud_button.setEnabled(False)
@@ -185,7 +177,6 @@ class HomePage(QWidget):
                 label.setStyleSheet("font-weight: 600; color: #aaaaaa;")
             self._set_buttons_enabled(False)
             self.fill_holes_button.setEnabled(False)
-            self.detect_patches_button.setEnabled(False)
             self.path_points_button.setEnabled(False)
             self.path_full_pipeline_button.setEnabled(False)
             self.convert_point_cloud_button.setEnabled(False)
@@ -212,7 +203,6 @@ class HomePage(QWidget):
         repaired_mesh = project_dir / REPAIRED_MESH
         final_mesh = project_dir / FINAL_MESH
         mobile_mesh = project_dir / "mesh_mobile.ply"
-        patches_dir = project_dir / PATCHES_DIR
         textures_dir = project_dir / TEXTURE_DIR
         backup_dir = project_dir / BACKUP_TEXTURE_DIR
         path_json = project_dir / PATH_JSON_FILENAME
@@ -227,18 +217,20 @@ class HomePage(QWidget):
         self._set_status("Original mesh", original_exists)
         is_point_cloud = is_point_cloud_project(self.current_mesh_id)
 
-        converted_name_label = self.status_grid.itemAtPosition(1, 0).widget()
-        converted_value_label = self.status_labels["Converted mesh"]
+        item = self.status_grid.itemAtPosition(1,0)
 
-        converted_name_label.setVisible(is_point_cloud)
-        converted_value_label.setVisible(is_point_cloud)
+        if item is not None:
+            converted_name_label = item.widget()
+            converted_value_label = self.status_labels["Converted mesh"]
+            if converted_name_label is not None:
+                converted_name_label.setVisible(is_point_cloud)
+                converted_value_label.setVisible(is_point_cloud)
 
         if is_point_cloud:
             self._set_status("Converted mesh", converted_exists)
         self._set_status("Repaired mesh", repaired_exists)
         self._set_status("Final mesh", final_exists)
         self._set_status("Mobile mesh", mobile_mesh.exists())
-        self._set_status("Patches folder", patches_dir.exists() and patches_dir.is_dir())
         self._set_status("Textures folder", textures_dir.exists() and textures_dir.is_dir())
         self._set_status("Texture backup", backup_dir.exists() and backup_dir.is_dir())
         self._set_status("Path JSON", path_json.exists())
@@ -254,7 +246,6 @@ class HomePage(QWidget):
         else:
             self.fill_holes_button.setEnabled(original_exists)
 
-        self.detect_patches_button.setEnabled(repaired_exists)
         self.path_points_button.setEnabled(True)
         self.path_full_pipeline_button.setEnabled(final_exists and path_points_exists)
 

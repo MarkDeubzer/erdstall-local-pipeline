@@ -3,7 +3,7 @@ from pathlib import Path
 from collections.abc import Callable
 import pymeshlab
 
-from erdstall_pipeline.config import INITIAL_MESH_REDUCTION_FACTOR, MOBILE_COMPRESSION_PERCENT
+from erdstall_pipeline.config import INITIAL_MESH_REDUCTION_FACTOR
 
 CancelCallback = Callable[[], None] | None
 def _check_cancelled(cancel_callback: CancelCallback) -> None:

@@ -3,9 +3,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from PySide6.QtWidgets import (
     QDialog,
-    QDoubleSpinBox,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -93,6 +91,8 @@ class AddPathPointsWindow(QDialog):
         self.pp_file_path = Path(file_path).expanduser()
 
         try:
+            if not self.pp_file_path:
+                return
             values = self._parse_pp_file(self.pp_file_path)
         except FileNotFoundError as e:
             self._values = None

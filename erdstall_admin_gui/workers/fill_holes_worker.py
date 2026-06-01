@@ -96,6 +96,10 @@ class FillHolesWorker(CancelableWorker):
                 cancel_callback=self.check_cancelled,
             )
 
+            if mobile_mesh_path is None:
+                self.write_log("Mobile mesh reduction did not return file path.")
+                return "Mobile mesh reduction did not return file path."
+
             mobile_mesh = Path(mobile_mesh_path)
 
             if mobile_mesh.exists():

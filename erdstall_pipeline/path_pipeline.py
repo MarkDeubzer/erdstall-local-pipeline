@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from erdstall_admin_gui.workers.cancelable_worker import TaskCancelled
-from .csv_to_json import csv_to_json_file
+from erdstall_pipeline.csv_to_json import csv_to_json_file
 import pymeshlab
 from collections.abc import Callable
 
@@ -23,10 +23,10 @@ from erdstall_pipeline.config import (
     PATH_MESH_FILENAME,
     FILES_DIR
 )
-from .ply_to_raw import convert_ply_to_raw
-from .run_imagej import run_imagej
-from .skeleton_pipeline import merge_raws
-from .path_finding_from_raw import compute_skeleton_csv
+from erdstall_pipeline.ply_to_raw import convert_ply_to_raw
+from erdstall_pipeline.run_imagej import run_imagej
+from erdstall_pipeline.skeleton_pipeline import merge_raws
+from erdstall_pipeline.path_finding_from_raw import compute_skeleton_csv
 
 
 logger = logging.getLogger(__name__)
@@ -124,8 +124,8 @@ def ensure_exists(path: str | Path, message: str) -> None:
     """
     Raise an error if a required file does not exist.
     """
-    path = Path(path)
-    if not path.exists():
+    p = Path(path)
+    if not p.exists():
         raise RuntimeError(message)
 
 def reduce_for_path(file_path: str,cancel_callback: CancelCallback = None) -> str:

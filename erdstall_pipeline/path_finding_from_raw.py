@@ -510,8 +510,6 @@ def compute_skeleton_csv() -> str:
     if path is None or used_connectivity is None:
         raise PathNotFound("No path found between start and end")
 
-     # path = smooth_path(path, iterations=2)
-
     print(f"Final path found with {used_connectivity}-connectivity, length={len(path)}")
 
     out_csv = Path(FILES_DIR) / PATH_OUTPUT_FILENAME
