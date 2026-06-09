@@ -192,6 +192,9 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         self.current_mesh_id = project_name
         self.current_project_label.setText(f"Current project: {self.current_mesh_id}")
         self.home_page.set_project(self.current_mesh_id)
+        self.home_page.refresh_project_info()
+
+        self.stack.setCurrentWidget(self.home_page)
 
     def delete_project(self, project_name: str) -> None:
         reply = QMessageBox.question(
@@ -277,11 +280,12 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
     def _on_project_init_success(self) -> None:
         self.load_projects()
 
-        if self._init_worker is not None:
-            mesh_id = self._init_worker.mesh_id
-            items = self.project_list.findItems(mesh_id, Qt.MatchFlag.MatchExactly)
-            if items:
-                self.project_list.setCurrentItem(items[0])
+        if self._init_worker is None:
+            return
+
+        mesh_id = self._init_worker.mesh_id
+
+        self._select_project_by_name(mesh_id)
 
     def _on_project_init_error(self, message: str) -> None:
         QMessageBox.critical(self, "Project creation failed", message)
