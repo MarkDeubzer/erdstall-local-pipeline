@@ -11,6 +11,7 @@ ORIGINAL_MESH = "original.ply"
 REPAIRED_MESH = "repaired_mesh.ply"
 FINAL_MESH = "mesh.ply"
 CONVERTED_MESH = "converted.ply"
+XML_FILENAME = "metadata.xml"
 
 TEXTURE_DIR = "mesh"
 BACKUP_TEXTURE_DIR = "textures_backup"
@@ -28,5 +29,10 @@ VOLUME_FILENAME = "volume.raw"
 SKELETON_FILENAME = "skeleton.raw"
 SKELETON_VOLUME_FILENAME = "skeleton_volume.raw"
 PATH_MESH_FILENAME = "mesh_path.ply"
+
+
+XML_NAMESPACE = "http://erdstall-metadaten.org"
+XSI_NAMESPACE = "http://www.w3.org/2001/XMLSchema-instance"
+XML_SCHEMA_LOCATION = "http://erdstall-metadaten.org metadaten.xsd"
 
 SIZE = 180

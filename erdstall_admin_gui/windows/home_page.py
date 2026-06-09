@@ -51,7 +51,7 @@ class HomePage(QWidget):
         title_layout = QVBoxLayout()
         title_layout.setSpacing(4)
 
-        self.title_label = QLabel("Erdstall Admin")
+        self.title_label = QLabel("Erdstall Pipeline")
         self.title_label.setStyleSheet("font-size: 24px; font-weight: 700;")
 
         self.subtitle_label = QLabel("Project dashboard")

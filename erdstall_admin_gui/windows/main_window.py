@@ -6,10 +6,12 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QDialog
 
 from erdstall_admin_gui.runners.task_runner import LoggedCancelableTaskRunnerMixin
+from erdstall_admin_gui.windows.create_xml_window import CreateXmlWindow
 from erdstall_admin_gui.windows.home_page import HomePage
 from erdstall_admin_gui.windows.texture_window import TextureWindow
 from erdstall_admin_gui.windows.setup_window import SetupWindow
 from erdstall_admin_gui.windows.add_project_window import AddProjectWindow
+from erdstall_admin_gui.workers import xml_worker
 from erdstall_admin_gui.workers.init_worker import ProjectInitWorker
 from PySide6.QtCore import Qt,QThread
 from erdstall_admin_gui.windows.task_log_window import TaskLogWindow
@@ -32,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from erdstall_admin_gui.workers.point_cloud_to_mesh_worker import PointCloudToMeshWorker
+from erdstall_admin_gui.workers.xml_worker import CreateXMLWorker
 from erdstall_pipeline.config import PLY_DIR, FINAL_MESH
 from erdstall_admin_gui.widgets.project_list_item_widget import ProjectListItemWidget
 import shutil
@@ -48,6 +51,7 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         self._full_pipeline_cancel_token  = None
         self._glb_cancel_token = None
         self._point_cloud_cancel_token = None
+        self._xml_cancel_token = None
 
         # Threads and Workers
         self.current_mesh_id: str | None = None
@@ -67,10 +71,13 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         self._glb_thread: QThread | None = None
         self._glb_worker: PlyToGlbWorker | None = None
 
+        self._xml_thread: QThread | None = None
+        self._xml_worker: CreateXMLWorker | None = None
+
         self._point_cloud_thread: QThread | None = None
         self._point_cloud_worker: PointCloudToMeshWorker | None = None
 
-        self.setWindowTitle("Erdstall Admin")
+        self.setWindowTitle("Erdstall Pipeline")
         self.resize(1000, 700)
 
         self.stack = QStackedWidget()
@@ -145,6 +152,10 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
         glb_action = QAction("Convert GLB", self)
         glb_action.triggered.connect(self.start_ply_to_glb)
         toolbar.addAction(glb_action)
+
+        xml_action = QAction("Create XML metadata", self)
+        xml_action.triggered.connect(self._start_xml_parser)
+        toolbar.addAction(xml_action)
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -321,6 +332,70 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
 
     def _after_fill_holes_success(self) -> None:
         self.home_page.refresh_project_info()
+
+    def _start_xml_parser(self) -> None:
+        if not self.current_mesh_id:
+            QMessageBox.warning(
+                self,
+                "No project selected",
+                "Please select a project first."
+            )
+            return
+
+        mesh_id = self.current_mesh_id
+
+        dialog = CreateXmlWindow(
+            default_id=mesh_id,
+            parent=self
+        )
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        settings = dialog.get_settings()
+
+        if not settings.get("id"):
+            settings["id"] = mesh_id
+
+        if settings["id"] != mesh_id:
+            reply = QMessageBox.question(
+                self,
+                "Different XML ID",
+                (
+                    "The XML ID is different from the selected project.\n\n"
+                    f"Selected project: {mesh_id}\n"
+                    f"XML ID: {settings['id']}\n\n"
+                    "Continue anyway?"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        self._start_logged_cancelable_task(
+            task_title=f"Create XML - {mesh_id}",
+            busy_message="XML creation is already running.",
+            running_message="Creating XML...",
+            thread_attr="_xml_thread",
+            worker_attr="_xml_worker",
+            cancel_token_attr="_xml_cancel_token",
+            worker_factory=lambda cancel_token: CreateXMLWorker(
+                mesh_id=mesh_id,
+                settings=settings,
+                cancel_token=cancel_token,
+            ),
+            success_status="XML created.",
+            error_status="XML creation failed.",
+            success_box_title="Create XML",
+            error_box_title="Create XML failed",
+            on_success=self._after_xml_success,
+        )
+
+    def _after_xml_success(self, message: str | None = None) -> None:
+        self.home_page.refresh_project_info()
+
 
     def open_path_points_window(self) -> None:
         if not self.current_mesh_id:
